@@ -14,7 +14,12 @@ import type { SessionMeta } from "@ai4s/sdk";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { cn } from "@/lib/cn";
 import { useRuntimeStore } from "@/lib/runtime";
-import { openProjectFolder, renameProject, type ProjectInfo } from "@/lib/tauri";
+import {
+  openProjectFolder,
+  renameProject,
+  workspacePathKey,
+  type ProjectInfo,
+} from "@/lib/tauri";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 /** Compact "time ago" like the reference UI: 37m · 18h · 3d · 1w · 9mo · 2y.
@@ -35,6 +40,8 @@ function timeAgo(ms: number | undefined, now: number): string {
   if (mo < 12) return `${mo}mo`;
   return `${Math.floor(d / 365)}y`;
 }
+
+const sessionRecency = (s: SessionMeta) => s.updated ?? s.created ?? 0;
 
 /** The last path segment (folder name) of an absolute workspace path. */
 function baseName(path: string): string {
@@ -68,12 +75,13 @@ export function ProjectsPage() {
     const map = new Map<string, SessionMeta[]>();
     for (const s of sessions) {
       if (s.parentId || !s.directory) continue;
-      const list = map.get(s.directory) ?? [];
+      const key = workspacePathKey(s.directory);
+      const list = map.get(key) ?? [];
       list.push(s);
-      map.set(s.directory, list);
+      map.set(key, list);
     }
     for (const list of map.values()) {
-      list.sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0));
+      list.sort((a, b) => sessionRecency(b) - sessionRecency(a));
     }
     return map;
   }, [sessions]);
@@ -82,8 +90,8 @@ export function ProjectsPage() {
     const q = query.trim().toLowerCase();
     return projects
       .map((p) => {
-        const projectSessions = sessionsByPath.get(p.path) ?? [];
-        const latest = projectSessions[0]?.updated ?? 0;
+        const projectSessions = sessionsByPath.get(workspacePathKey(p.path)) ?? [];
+        const latest = projectSessions[0] ? sessionRecency(projectSessions[0]) : 0;
         return { ...p, sessions: projectSessions, updated: Math.max(latest, p.createdAt) };
       })
       .filter((p) => !q || p.name.toLowerCase().includes(q))
@@ -259,7 +267,7 @@ export function ProjectsPage() {
                             className="grid w-full grid-cols-[minmax(0,1fr)_5rem_1.5rem] items-center gap-3 rounded-input py-1.5 pl-8 pr-2 text-left hover:bg-surface-2"
                           >
                             <span className="truncate text-sm text-text">{s.title}</span>
-                            <span className="text-xs tabular-nums text-muted">{timeAgo(s.updated, now)}</span>
+                            <span className="text-xs tabular-nums text-muted">{timeAgo(sessionRecency(s), now)}</span>
                             <ChevronRight size={14} className="justify-self-end text-muted" />
                           </button>
                         ))

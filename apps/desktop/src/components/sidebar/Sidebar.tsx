@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from "react";
 import { useTranslation } from "react-i18next";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
@@ -20,7 +20,12 @@ import {
 import type { Project } from "@ai4s/shared";
 import { cn } from "@/lib/cn";
 import { useRuntimeStore } from "@/lib/runtime";
-import { pickFolder, renameProject, type ProjectInfo } from "@/lib/tauri";
+import {
+  pickFolder,
+  renameProject,
+  workspacePathKey,
+  type ProjectInfo,
+} from "@/lib/tauri";
 import {
   SIDEBAR_MAX,
   SIDEBAR_MIN,
@@ -39,6 +44,7 @@ interface Row {
   title: string;
   to: string;
   kind: "session" | "example";
+  recency?: number;
 }
 
 /** Dragging the divider below this pointer x collapses the sidebar; dragging
@@ -48,6 +54,9 @@ const COLLAPSE_BELOW = 140;
 /** Projects the user folded shut (ids). Projects default to open — a
  *  researcher has a handful, and their sessions ARE the sidebar's content. */
 const COLLAPSED_KEY = "ai4s.collapsedProjects";
+type InertAttributes = HTMLAttributes<HTMLDivElement> & { inert?: "" };
+const inertWhenClosed = (open: boolean): InertAttributes =>
+  open ? {} : { inert: "" };
 function initialCollapsedProjects(): string[] {
   if (typeof window === "undefined") return [];
   try {
@@ -185,51 +194,61 @@ export function Sidebar({ project }: { project: Project }) {
     }
   };
 
-  // Subagent child sessions are internals of their parent conversation —
-  // their asks and progress surface there, so they get no row of their own.
-  const topSessions = sessions.filter((s) => !s.parentId);
-  const projectByPath = new Map(projects.map((p) => [p.path, p]));
-  const sessionsByProject = new Map<string, Row[]>(
-    projects.map((p) => [p.id, []]),
+  const { sessionsByProject, looseRows, visibleProjects } = useMemo(() => {
+    // Subagent child sessions are internals of their parent conversation —
+    // their asks and progress surface there, so they get no row of their own.
+    const projectByPath = new Map(projects.map((p) => [workspacePathKey(p.path), p]));
+    const sessionsByProject = new Map<string, Row[]>(
+      projects.map((p) => [p.id, []]),
+    );
+    const updatedByProject = new Map<string, number>();
+    const looseRows: Row[] = [];
+    for (const s of sessions) {
+      if (s.parentId) continue;
+      const recency = s.updated ?? s.created;
+      const row: Row = {
+        id: s.id,
+        title: s.title,
+        to: `/live/${s.id}`,
+        kind: "session",
+        recency,
+      };
+      const owner = s.directory
+        ? projectByPath.get(workspacePathKey(s.directory))
+        : undefined;
+      if (owner) {
+        sessionsByProject.get(owner.id)!.push(row);
+        if (recency != null)
+          updatedByProject.set(owner.id, Math.max(updatedByProject.get(owner.id) ?? 0, recency));
+      } else {
+        looseRows.push(row);
+      }
+    }
+    const byRowRecency = (a: Row, b: Row) => (b.recency ?? 0) - (a.recency ?? 0);
+    for (const rows of sessionsByProject.values()) rows.sort(byRowRecency);
+    looseRows.sort(byRowRecency);
+    const recencyOf = (p: ProjectInfo) => updatedByProject.get(p.id) ?? p.createdAt;
+    const visibleProjects = [...projects].sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      const recencyDelta = recencyOf(b) - recencyOf(a);
+      if (recencyDelta !== 0) return recencyDelta;
+      const nameDelta = a.name.localeCompare(b.name);
+      if (nameDelta !== 0) return nameDelta;
+      return a.id.localeCompare(b.id);
+    });
+    return { sessionsByProject, looseRows, visibleProjects };
+  }, [projects, sessions]);
+  const exampleRows: Row[] = useMemo(
+    () => project.sessions
+      .filter((e) => !hiddenExamples.includes(e.id))
+      .map((e) => ({
+        id: e.id,
+        title: e.title,
+        to: `/example/${e.id}`,
+        kind: "example" as const,
+      })),
+    [project.sessions, hiddenExamples],
   );
-  const looseRows: Row[] = [];
-  for (const s of topSessions) {
-    const row: Row = {
-      id: s.id,
-      title: s.title,
-      to: `/live/${s.id}`,
-      kind: "session",
-    };
-    const owner = s.directory ? projectByPath.get(s.directory) : undefined;
-    if (owner) sessionsByProject.get(owner.id)!.push(row);
-    else looseRows.push(row);
-  }
-  // Recency per project = its newest session's update time (else its creation).
-  const updatedByProject = new Map<string, number>();
-  for (const s of topSessions) {
-    if (!s.directory || s.updated == null) continue;
-    const owner = projectByPath.get(s.directory);
-    if (owner)
-      updatedByProject.set(owner.id, Math.max(updatedByProject.get(owner.id) ?? 0, s.updated));
-  }
-  const recencyOf = (p: ProjectInfo) => updatedByProject.get(p.id) ?? p.createdAt;
-  // The sidebar shows every pinned project plus the few most-recent others; the
-  // full list (search, delete, …) lives on the Projects page.
-  const RECENT_LIMIT = 5;
-  const byRecency = [...projects].sort((a, b) => recencyOf(b) - recencyOf(a));
-  const visibleProjects = [
-    ...byRecency.filter((p) => p.pinned),
-    ...byRecency.filter((p) => !p.pinned).slice(0, RECENT_LIMIT),
-  ];
-  const hiddenProjectCount = projects.length - visibleProjects.length;
-  const exampleRows: Row[] = project.sessions
-    .filter((e) => !hiddenExamples.includes(e.id))
-    .map((e) => ({
-      id: e.id,
-      title: e.title,
-      to: `/example/${e.id}`,
-      kind: "example" as const,
-    }));
 
   const [pendingDelete, setPendingDelete] = useState<Row | null>(null);
 
@@ -472,10 +491,10 @@ export function Sidebar({ project }: { project: Project }) {
           )}
           {visibleProjects.map((p) => {
             const open = !collapsedProjects.includes(p.id);
-            const active = p.path === workspace;
+            const active = workspace ? workspacePathKey(p.path) === workspacePathKey(workspace) : false;
             const rows = sessionsByProject.get(p.id) ?? [];
             return (
-              <div key={p.id}>
+              <div key={p.id} role="group" aria-label={p.name}>
                 {renamingId === p.id ? (
                   <div className="py-0.5 pl-5 pr-1">
                     <InlineNameInput
@@ -555,6 +574,8 @@ export function Sidebar({ project }: { project: Project }) {
                   </div>
                 )}
                 <div
+                  aria-hidden={!open}
+                  {...inertWhenClosed(open)}
                   className={cn(
                     "grid transition-[grid-template-rows] duration-200 ease-out",
                     open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
@@ -574,15 +595,6 @@ export function Sidebar({ project }: { project: Project }) {
               </div>
             );
           })}
-          {hiddenProjectCount > 0 && (
-            <button
-              onClick={() => navigate("/projects")}
-              className="flex w-full items-center gap-2 rounded-input px-2 py-1 pl-6 text-[13px] text-muted hover:bg-surface-2 hover:text-text"
-            >
-              <span className="truncate">{t("projects.seeAll")}</span>
-              <span className="text-[10px] tabular-nums text-muted">+{hiddenProjectCount}</span>
-            </button>
-          )}
           <div className="mt-3 px-2 py-1 text-xs font-medium uppercase tracking-wider text-muted">
             {t("history.heading")}
           </div>

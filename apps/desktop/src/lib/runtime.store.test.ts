@@ -54,14 +54,26 @@ const mocks = vi.hoisted(() => ({
   startRuntime: vi.fn(async () => "http://127.0.0.1:1"),
   /** Constructor options every OpenCodeClient was created with. */
   clientOpts: [] as Record<string, unknown>[],
+  /** Session list the mock server returns. */
+  sessions: [] as unknown[],
+  /** Next listSessions call throws. */
+  failListSessions: false,
+  logDebug: vi.fn(async () => {}),
 }));
 
 vi.mock("./tauri", () => ({
   isTauri: true,
-  logDebug: async () => {},
+  logDebug: mocks.logDebug,
   detectTools: async () => [],
   startRuntime: mocks.startRuntime,
   workspacePath: async () => "/ws/base",
+  workspacePathKey: (path: string) => {
+    const plain = path.replace(/^\\\\\?\\UNC\\/i, "//").replace(/^\\\\\?\\/i, "");
+    const windowsPath = /^[a-z]:[\\/]/i.test(plain) || /^[\\/]{2}/.test(plain);
+    const normalized = windowsPath ? plain.replace(/\\/g, "/").toLowerCase() : plain;
+    if (normalized === "/" || normalized === "//" || /^[a-z]:\/$/i.test(normalized)) return normalized;
+    return normalized.replace(/\/+$/g, "");
+  },
   setWorkspace: mocks.setWorkspace,
   newDatedWorkspace: mocks.newDatedWorkspace,
   markSession: async () => {},
@@ -100,7 +112,8 @@ vi.mock("@ai4s/sdk", () => {
       this.statusCb("ready");
     }
     async listSessions() {
-      return [];
+      if (mocks.failListSessions) throw new Error("list exploded");
+      return mocks.sessions;
     }
     async listSkills() {
       return [{ name: "stub" }];
@@ -208,6 +221,9 @@ beforeEach(async () => {
   mocks.currentModel = null;
   mocks.providers = [];
   mocks.failSetModel = false;
+  mocks.sessions = [];
+  mocks.failListSessions = false;
+  mocks.logDebug.mockClear();
   mocks.notifyPermissionRequest.mockResolvedValue(true);
   useRuntimeStore.setState({
     currentId: null,
@@ -304,6 +320,23 @@ describe("per-session workspace folders", () => {
     await useRuntimeStore.getState().connectRetry(1);
     expect(useRuntimeStore.getState().status).toBe("error");
     expect(useRuntimeStore.getState().error).toContain("event stream");
+  });
+
+  it("openSession does not reconnect for an equivalent Windows workspace path", async () => {
+    useRuntimeStore.setState({
+      workspace: String.raw`D:\OpenScience\Windows-project`,
+      sessions: [
+        {
+          id: "win",
+          title: "Windows session",
+          directory: "\\\\?\\D:\\OpenScience\\Windows-project\\",
+        },
+      ] as never,
+    });
+
+    await useRuntimeStore.getState().openSession("win");
+
+    expect(mocks.setWorkspace).not.toHaveBeenCalled();
   });
 
   it("a superseded openSession does not start a second, dueling reconnect", async () => {
@@ -547,6 +580,45 @@ describe("per-session workspace folders", () => {
     useRuntimeStore.setState({ currentId: "ses_1", workspacePinned: false });
     await useRuntimeStore.getState().ensureDraftWorkspace();
     expect(mocks.newDatedWorkspace).not.toHaveBeenCalled();
+  });
+});
+
+describe("session list refresh", () => {
+  const globalSessions = [
+    { id: "A", title: "Alpha", directory: "/ws/A" },
+    { id: "B", title: "Beta", directory: "/ws/B", parentId: "A" },
+    { id: "loose", title: "Loose", directory: "/ws/loose" },
+  ];
+
+  it("keeps the old sessions and parents when listSessions rejects", async () => {
+    const oldSessions = globalSessions.slice(0, 2);
+    useRuntimeStore.setState({
+      sessions: oldSessions as never,
+      sessionParents: { B: "A" },
+      status: "ready",
+      error: null,
+    });
+    mocks.failListSessions = true;
+    mocks.logDebug.mockClear();
+
+    await useRuntimeStore.getState().refreshSessions();
+
+    const s = useRuntimeStore.getState();
+    expect(s.sessions).toEqual(oldSessions);
+    expect(s.sessionParents).toEqual({ B: "A" });
+    expect(s.status).toBe("ready");
+    expect(s.error).toBe(null);
+    expect(mocks.logDebug).toHaveBeenCalledWith("refreshSessions FAILED: list exploded");
+  });
+
+  it("keeps A, B, and loose sessions from the global list after a workspace switch reconnect", async () => {
+    mocks.sessions = globalSessions;
+
+    await useRuntimeStore.getState().switchWorkspace({ path: "/ws/other" });
+
+    const s = useRuntimeStore.getState();
+    expect(s.sessions.map((session) => session.id)).toEqual(["A", "B", "loose"]);
+    expect(s.sessionParents).toEqual({ B: "A" });
   });
 });
 

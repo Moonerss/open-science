@@ -71,6 +71,79 @@ describe("OpenCodeClient ↔ OpenCode server", () => {
     expect(commands[1].source).toBe("skill");
   });
 
+  it("lists sessions from the global endpoint without directory scoping", async () => {
+    const seen: string[] = [];
+    const fetching: typeof fetch = async (input) => {
+      seen.push(String(input));
+      return new Response(
+        JSON.stringify([
+          {
+            id: "A",
+            title: "Project A",
+            slug: "project-a",
+            directory: "/ws/A",
+            time: { created: 10, updated: 20 },
+          },
+          {
+            id: "B",
+            title: "Project B",
+            directory: "/ws/B",
+            parentID: "A",
+            time: { created: 11, updated: 21 },
+          },
+          {
+            id: "loose",
+            slug: "loose",
+            directory: "",
+            parentID: null,
+            time: { created: 12, updated: 22 },
+          },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+    const client = new OpenCodeClient({
+      baseUrl: "http://opencode.test",
+      directory: "/active/workspace",
+      fetchImpl: fetching,
+    });
+
+    const sessions = await client.listSessions();
+
+    expect(seen).toEqual(["http://opencode.test/experimental/session"]);
+    expect(sessions).toEqual([
+      { id: "A", title: "Project A", slug: "project-a", directory: "/ws/A", created: 10, updated: 20 },
+      {
+        id: "B",
+        title: "Project B",
+        directory: "/ws/B",
+        parentId: "A",
+        created: 11,
+        updated: 21,
+      },
+      { id: "loose", title: "Untitled", slug: "loose", directory: "", created: 12, updated: 22 },
+    ]);
+  });
+
+  it("throws instead of falling back to scoped sessions when the global session list fails", async () => {
+    const seen: string[] = [];
+    const fetching: typeof fetch = async (input) => {
+      seen.push(String(input));
+      return new Response(JSON.stringify({ name: "RouteMissing", message: "missing route" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    const client = new OpenCodeClient({
+      baseUrl: "http://opencode.test",
+      directory: "/active/workspace",
+      fetchImpl: fetching,
+    });
+
+    await expect(client.listSessions()).rejects.toThrow(/missing route|Failed to list sessions/);
+    expect(seen).toEqual(["http://opencode.test/experimental/session"]);
+  });
+
   it("runs a shell command: bash tool part + session.idle stream back", async () => {
     const events: OpenCodeEvent[] = [];
     const client = new OpenCodeClient({ baseUrl: `http://127.0.0.1:${server.port}` });

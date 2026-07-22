@@ -34,6 +34,7 @@ import {
   setWorkspace,
   startRuntime,
   workspacePath,
+  workspacePathKey,
   type ApprovalMode,
   type ProjectInfo,
   type ProxyMode,
@@ -1111,8 +1112,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         for (const m of sessions) if (m.parentId) sessionParents[m.id] = m.parentId;
         return { sessions, sessionParents };
       });
-    } catch {
-      /* ignore transient list failures */
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      void logDebug(`refreshSessions FAILED: ${msg}`);
     }
   },
 
@@ -1270,7 +1272,8 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // all operate where the session's files live. Sessions with no recorded
     // folder, or that already match the active folder, skip this.
     const dir = get().sessions.find((s) => s.id === id)?.directory;
-    if (dir && dir !== get().workspace) {
+    const workspace = get().workspace;
+    if (dir && (!workspace || workspacePathKey(dir) !== workspacePathKey(workspace))) {
       set({ switching: true });
       try {
         await setWorkspace(dir).catch(() => {});

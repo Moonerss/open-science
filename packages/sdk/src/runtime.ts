@@ -38,6 +38,7 @@ export interface AgentRuntime {
 
   // ---- sessions (a conversation) ----
   createSession(): Promise<string>;
+  /** Return the runtime-wide session catalog across all workspaces. */
   listSessions(): Promise<SessionMeta[]>;
   deleteSession(sessionId: string): Promise<void>;
   getMessages(sessionId: string): Promise<HistoryMessage[]>;

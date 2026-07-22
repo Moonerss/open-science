@@ -10,6 +10,12 @@ vi.mock("@/lib/tauri", () => ({
   addBinaryToWorkspace: vi.fn(async () => "pasted.png"),
 }));
 
+vi.mock("@tauri-apps/api/webview", () => ({
+  getCurrentWebview: () => ({
+    onDragDropEvent: vi.fn(async () => vi.fn()),
+  }),
+}));
+
 describe("Composer attachments (desktop)", () => {
   it("adds picked files as removable chips and sends them as a file note", async () => {
     const onSend = vi.fn();

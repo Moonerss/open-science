@@ -482,6 +482,19 @@ export async function newDatedWorkspace(name: string): Promise<string> {
   return invoke<string>("new_dated_workspace", { name });
 }
 
+/** Normalize absolute workspace paths for identity comparisons. Rust
+ * `canonicalize()` adds a Windows verbatim prefix while OpenCode reports the
+ * ordinary drive path; Windows paths are also case-insensitive. */
+export function workspacePathKey(path: string): string {
+  const plain = path.replace(/^\\\\\?\\UNC\\/i, "//").replace(/^\\\\\?\\/i, "");
+  const windowsPath = /^[a-z]:[\\/]/i.test(plain) || /^[\\/]{2}/.test(plain);
+  const normalized = windowsPath ? plain.replace(/\\/g, "/").toLowerCase() : plain;
+  if (normalized === "/" || normalized === "//" || /^[a-z]:\/$/i.test(normalized)) {
+    return normalized;
+  }
+  return normalized.replace(/\/+$/g, "");
+}
+
 /** A project: a named workspace folder under the base dir, marked by its
  *  `.openscience/project.json`. Sessions group under it by `directory`. */
 export interface ProjectInfo {

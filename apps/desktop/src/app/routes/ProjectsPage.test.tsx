@@ -57,4 +57,63 @@ describe("ProjectsPage", () => {
     });
     expect(screen.getByText("No projects match.")).toBeInTheDocument();
   });
+
+  it("expands only exact top-level sessions in newest-first order", async () => {
+    useRuntimeStore.setState({
+      projects: [{ ...base, id: "p1", name: "Alpha", path: "/base/alpha-dir" }],
+      sessions: [
+        { id: "older", title: "older exact session", directory: "/base/alpha-dir", updated: 2_000 },
+        { id: "trailing", title: "trailing slash session", directory: "/base/alpha-dir/", updated: 3_000 },
+        { id: "child-dir", title: "child directory session", directory: "/base/alpha-dir/child", updated: 5_000 },
+        {
+          id: "subagent",
+          title: "subagent session",
+          directory: "/base/alpha-dir",
+          parentId: "older",
+          updated: 6_000,
+        },
+        { id: "newer", title: "newer exact session", directory: "/base/alpha-dir", updated: 4_000 },
+      ],
+    });
+
+    renderAt("/projects");
+    await screen.findByPlaceholderText("Search projects");
+    const page = within(screen.getByRole("main"));
+
+    fireEvent.click(page.getByRole("button", { name: "Alpha" }));
+
+    const newer = page.getByText("newer exact session");
+    const trailing = page.getByText("trailing slash session");
+    const older = page.getByText("older exact session");
+    expect(page.queryByText("child directory session")).not.toBeInTheDocument();
+    expect(page.queryByText("subagent session")).not.toBeInTheDocument();
+    expect(newer.compareDocumentPosition(trailing)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(trailing.compareDocumentPosition(older)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("uses session created time when sorting sessions and project recency without updated", async () => {
+    useRuntimeStore.setState({
+      projects: [
+        { ...base, id: "old-project", name: "Old project", path: "/base/old-project", createdAt: 100 },
+        { ...base, id: "created-only", name: "Created-only latest", path: "/base/created-only", createdAt: 10 },
+      ],
+      sessions: [
+        { id: "older", title: "older created session", directory: "/base/created-only", created: 300 },
+        { id: "newer", title: "newer created session", directory: "/base/created-only", created: 500 },
+      ],
+    });
+
+    renderAt("/projects");
+    await screen.findByPlaceholderText("Search projects");
+    const page = within(screen.getByRole("main"));
+
+    const createdOnly = page.getByRole("button", { name: "Created-only latest" });
+    const oldProject = page.getByRole("button", { name: "Old project" });
+    expect(createdOnly.compareDocumentPosition(oldProject)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    fireEvent.click(createdOnly);
+    const newer = page.getByText("newer created session");
+    const older = page.getByText("older created session");
+    expect(newer.compareDocumentPosition(older)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
 });

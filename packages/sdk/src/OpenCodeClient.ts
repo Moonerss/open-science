@@ -297,15 +297,11 @@ export class OpenCodeClient implements AgentRuntime {
    *  sidecar's cwd resolves to, so history would appear to change when the user
    *  switches folders; `/experimental/session` lists every project's sessions
    *  (each item still carries its `directory`). The OpenCode version is pinned,
-   *  so the experimental route is stable for us; fall back to `/session` if a
-   *  server ever lacks it. */
+   *  so the experimental route is stable for us. */
   async listSessions(): Promise<SessionMeta[]> {
-    let res = await this.fetchWithTimeout(`${this.baseUrl}/experimental/session`, {
+    const res = await this.fetchWithTimeout(`${this.baseUrl}/experimental/session`, {
       headers: this.headers(),
     });
-    if (!res.ok) {
-      res = await this.fetchWithTimeout(`${this.baseUrl}/session`, { headers: this.headers() });
-    }
     if (!res.ok) throw await this.apiError(res, "Failed to list sessions");
     const arr = (await res.json()) as Array<{
       id: string;
