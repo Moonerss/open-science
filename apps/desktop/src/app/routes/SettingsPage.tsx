@@ -28,6 +28,7 @@ import { getClient, useRuntimeStore } from "@/lib/runtime";
 import { useUpdateStore } from "@/lib/update";
 import {
   agentBrowserProfiles,
+  closeAgentBrowser,
   detectChrome,
   setupBrowserChrome,
   type BrowserProfile,
@@ -69,7 +70,6 @@ import { ProviderManagerCard } from "@/components/settings/ProviderManagerCard";
 import { AgentModelsCard } from "@/components/settings/AgentModelsCard";
 import { MemoryCard } from "@/components/settings/MemoryCard";
 import { Row, Section, Switch } from "@/components/settings/Section";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { resolveSection } from "@/components/settings/sections";
 import { chipCls, inputCls, selectCls } from "@/components/settings/inputCls";
 import { SCIENCE_CONNECTORS } from "@/lib/scienceConnectors";
@@ -160,10 +160,6 @@ export function SettingsPage() {
   const [chrome, setChrome] = useState<ChromeInfo | null>(null);
   const [browserProfile, setBrowserProfile] = useState(""); // "" ⇒ isolated
   const [browserHeaded, setBrowserHeaded] = useState(false);
-  // Turning the window OFF while reusing a real Chrome login can't truly go
-  // headless (agent-browser drives your real Chrome in place), so we confirm
-  // before allowing it — the flag stays on until the user says "off anyway".
-  const [confirmHeadedOff, setConfirmHeadedOff] = useState(false);
   const [browserTools, setBrowserTools] = useState("core");
   const [browserDomains, setBrowserDomains] = useState(""); // one pattern per line
   // The interpreter local Python kernels resolve to + the manual override input.
@@ -737,6 +733,7 @@ export function SettingsPage() {
 
   const disableBrowser = () =>
     run(t("toast.couldNotRemoveMcp"), async () => {
+      await closeAgentBrowser();
       await removeConfigEntry("mcp", BROWSER_MCP_ID);
       await useRuntimeStore.getState().connectRetry();
       toast.success(t("toast.mcpRemoved", { name: t("browser.label") }));
@@ -1586,16 +1583,7 @@ export function SettingsPage() {
                 control={
                   <Switch
                     checked={browserHeaded}
-                    onChange={(next) => {
-                      // Reusing a real, named Chrome profile drives your live
-                      // Chrome in place — it can't truly hide the window. Warn
-                      // before turning it off; private/isolated profiles go
-                      // headless cleanly, so switch those without a prompt.
-                      const reusesRealLogin =
-                        browserProfile !== PRIVATE_BROWSER && browserProfile.trim() !== "";
-                      if (!next && reusesRealLogin) setConfirmHeadedOff(true);
-                      else setBrowserHeaded(next);
-                    }}
+                    onChange={setBrowserHeaded}
                     label={t("browser.showWindow")}
                   />
                 }
@@ -1650,22 +1638,6 @@ export function SettingsPage() {
                 </button>
               </div>
             </div>
-          )}
-          {confirmHeadedOff && (
-            <ConfirmDialog
-              title={t("browser.headedOffTitle")}
-              body={t("browser.headedOffBody", {
-                profile:
-                  browserProfiles.find((p) => p.directory === browserProfile)?.name ??
-                  browserProfile,
-              })}
-              confirmLabel={t("browser.headedOffConfirm")}
-              onConfirm={() => {
-                setBrowserHeaded(false);
-                setConfirmHeadedOff(false);
-              }}
-              onCancel={() => setConfirmHeadedOff(false)}
-            />
           )}
         </Section>
         )}

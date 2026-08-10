@@ -2,6 +2,7 @@
 // bundled OpenCode sidecar (isolated config/data + dedicated port; killed on exit).
 mod artifact_file;
 mod browser;
+pub mod browser_mcp_proxy;
 mod debug_log;
 mod examples;
 mod gateway;
@@ -140,7 +141,9 @@ pub fn run() {
             runtime::get_mirror_setting,
             runtime::set_mirror_setting,
             browser::agent_browser_bin,
+            browser::browser_mcp_bin,
             browser::agent_browser_profiles,
+            browser::close_agent_browser,
             browser::detect_chrome,
             browser::setup_browser_chrome,
             kernel::kernel_execute,
@@ -203,6 +206,7 @@ pub fn run() {
             // the OpenCode sidecar / kernel / Jupyter orphan on every quit. The
             // cleanup is idempotent, so running on both is safe.
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+                browser::close_agent_browser_on_exit();
                 runtime::kill_child(&app.state::<RuntimeState>());
                 kernel::kill_kernel(&app.state::<KernelState>());
                 jupyter::kill_jupyter(&app.state::<JupyterState>());

@@ -239,6 +239,7 @@ fn auth_has_provider(text: &str, provider_id: &str) -> bool {
 /// profile's global skills dir (`<xdg-config>/opencode/skills/`), which OpenCode
 /// scans regardless of project detection: `skills/` is the external ai4s-skills
 /// pack, `skills-office/` Anthropic's document skills (docx/pdf/pptx/xlsx),
+/// `skills-agent-browser/` the version-matched official agent-browser skill,
 /// `skills-core/` the first-party skills from `runtime/skills/core`. The
 /// workspace's own `.opencode/skills/` stays reserved for skills the user
 /// installs. Runs before every sidecar start so app upgrades refresh the packs.
@@ -249,7 +250,12 @@ fn deploy_bundled_skills(app: &AppHandle) {
     };
     let mut bundled: std::collections::HashSet<std::ffi::OsString> = std::collections::HashSet::new();
     let mut all_ok = true;
-    for resource in ["skills", "skills-office", "skills-core"] {
+    for resource in [
+        "skills",
+        "skills-office",
+        "skills-agent-browser",
+        "skills-core",
+    ] {
         let src = match app
             .path()
             .resolve(resource, tauri::path::BaseDirectory::Resource)
@@ -273,7 +279,7 @@ fn deploy_bundled_skills(app: &AppHandle) {
     // freshly-bundled set is a stale leftover — e.g. one renamed across an app
     // upgrade (`hpc-slurm` → `remote-compute`) — and must be removed so the
     // obsolete duplicate can't shadow or confuse the agent. Prune ONLY when all
-    // three packs deployed cleanly: a partial deploy would make `bundled`
+    // packs deployed cleanly: a partial deploy would make `bundled`
     // incomplete and wrongly delete valid skills.
     if all_ok {
         prune_stale_skills(&dst, &bundled);
@@ -394,6 +400,27 @@ fn deploy_goal_plugin(app: &AppHandle) -> Option<PathBuf> {
     // Refresh on every start so app upgrades replace the plugin in place.
     if let Err(e) = std::fs::copy(&src, &dst) {
         eprintln!("failed to deploy goal plugin: {e}");
+        return None;
+    }
+    Some(dst)
+}
+
+/// Deploy the dependency-free guard that removes model-supplied browser launch
+/// overrides before OpenCode forwards a tool call to the official MCP server.
+fn deploy_browser_guard_plugin(app: &AppHandle) -> Option<PathBuf> {
+    let src = app
+        .path()
+        .resolve(
+            "browser-plugin/browser-guard.ts",
+            tauri::path::BaseDirectory::Resource,
+        )
+        .ok()
+        .filter(|p| p.is_file())?;
+    let config_dir = xdg_config_home(app).ok()?.join("opencode");
+    let dst = config_dir.join("browser-guard.ts");
+    std::fs::create_dir_all(&config_dir).ok()?;
+    if let Err(e) = std::fs::copy(&src, &dst) {
+        eprintln!("failed to deploy browser guard plugin: {e}");
         return None;
     }
     Some(dst)
@@ -1069,6 +1096,32 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
         }
         std::fs::write(&cfg_file, seeded).map_err(|e| e.to_string())?;
     }
+    // Rename the legacy browser MCP id, then hide the incompatible user skill
+    // with that old name while the official connector is configured.
+    let existing = std::fs::read_to_string(&cfg_file).unwrap_or_default();
+    let close_legacy_browser =
+        crate::opencode_config::browser_uses_legacy_namespace(&existing);
+    if let Some(migrated) = crate::opencode_config::migrate_browser_integration(&existing) {
+        std::fs::write(&cfg_file, migrated).map_err(|e| e.to_string())?;
+        if close_legacy_browser {
+            crate::browser::close_legacy_agent_browser_on_upgrade();
+        }
+    }
+    // Existing installs called agent-browser directly. Put the first-party MCP
+    // ownership boundary in front of it before OpenCode starts, preserving the
+    // user's selected upstream tool profile.
+    if let (Ok(proxy_bin), Some(agent_browser_bin)) =
+        (std::env::current_exe(), sidecar_bin("agent-browser"))
+    {
+        let existing = std::fs::read_to_string(&cfg_file).unwrap_or_default();
+        let proxy = proxy_bin.to_string_lossy().replace('\\', "/");
+        let agent = agent_browser_bin.to_string_lossy().replace('\\', "/");
+        if let Some(updated) =
+            crate::opencode_config::ensure_browser_mcp_proxy(&existing, &proxy, &agent)
+        {
+            std::fs::write(&cfg_file, updated).map_err(|e| e.to_string())?;
+        }
+    }
     // Long conversations must not die on "Input exceeds context window" (#62):
     // turn OpenCode's automatic compaction on for a config that has never
     // said either way, and register the memory layers (global MEMORY.md +
@@ -1101,6 +1154,16 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
         let existing = std::fs::read_to_string(&cfg_file).unwrap_or_default();
         let path_str = plugin_path.to_string_lossy().replace('\\', "/");
         if let Some(updated) = crate::opencode_config::ensure_goal_plugin(&existing, &path_str) {
+            std::fs::write(&cfg_file, updated).map_err(|e| e.to_string())?;
+        }
+    }
+    // Browser launch/session policy is an app invariant, not a model hint.
+    if let Some(plugin_path) = deploy_browser_guard_plugin(app) {
+        let existing = std::fs::read_to_string(&cfg_file).unwrap_or_default();
+        let path_str = plugin_path.to_string_lossy().replace('\\', "/");
+        if let Some(updated) =
+            crate::opencode_config::ensure_browser_guard_plugin(&existing, &path_str)
+        {
             std::fs::write(&cfg_file, updated).map_err(|e| e.to_string())?;
         }
     }

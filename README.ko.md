@@ -80,7 +80,7 @@ Formerly Open Science. Claude Science 및 유사한 AI-for-science 워크벤치�
 
 **당신의 Chrome을 직접 조작.** 에이전트가 로그인을 포함한 실제 브라우저 프로필로 실시간 웹을 읽고, 찾은 내용을 그림과 정렬 가능한 CSV로 만듭니다.
 
-![browser-control로 사용자의 Chrome을 조작해 bioRxiv 프리프린트를 차트와 CSV로 수집하는 에이전트](./docs/assets/showcase-browser.webp)
+![open-science-browser로 사용자의 Chrome을 조작해 bioRxiv 프리프린트를 차트와 CSV로 수집하는 에이전트](./docs/assets/showcase-browser.webp)
 
 **어디서나, 심지어 휴대폰에서도 연구.** 내장된 인증 게이트웨이가 *실제* 데스크톱 UI를 LAN 내 브라우저(또는 터널)에 제공하므로, 책상에서 실행을 시작하고 완성된 그림과 보고서를 휴대폰에서 읽을 수 있습니다.
 

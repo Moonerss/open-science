@@ -45,9 +45,11 @@
     },
     "resources": {
       "../../../runtime/goal-plugin": "goal-plugin/",
+      "../../../runtime/browser-plugin": "browser-plugin/",
       "../../../runtime/tools": "tools/",
       "../../../runtime/skills/external/ai4s-skills": "skills/",
       "../../../runtime/skills/external/anthropic-skills": "skills-office/",
+      "../../../runtime/skills/external/agent-browser": "skills-agent-browser/",
       "../../../runtime/skills/core": "skills-core/",
       "../../../runtime/opencode-profile/agent": "profile/agent/",
       "../../../runtime/opencode-profile/command": "profile/command/",

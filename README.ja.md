@@ -80,7 +80,7 @@ Formerly Open Science. Claude Science などの AI-for-science ワークベン�
 
 **あなた自身の Chrome を操作。** エージェントはあなた自身のブラウザプロファイル——ログインも含めて——を通じてライブな Web を読み取り、見つけた内容を図とソート可能な CSV に変換します。
 
-![browser-control でユーザー自身の Chrome を操作し、bioRxiv のプレプリントを収集してチャートと CSV にするエージェント](./docs/assets/showcase-browser.webp)
+![open-science-browser でユーザー自身の Chrome を操作し、bioRxiv のプレプリントを収集してチャートと CSV にするエージェント](./docs/assets/showcase-browser.webp)
 
 **どこからでも研究——スマホからでも。** 組み込みの認証ゲートウェイが*本物の*デスクトップ UI を LAN 上のブラウザ（またはトンネル）へ配信するので、デスクで実行を開始し、完成した図とレポートをスマホで読めます。
 

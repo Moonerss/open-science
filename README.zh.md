@@ -90,7 +90,7 @@
 
 **驱动你自己的 Chrome。** 智能体通过你真实的浏览器配置文件——连同登录状态——读取实时网页，再把找到的内容变成一张图和一份可排序的 CSV。
 
-![智能体通过 browser-control 驱动用户自己的 Chrome，把 bioRxiv 预印本采集成图表和 CSV](./docs/assets/showcase-browser.webp)
+![智能体通过 open-science-browser 驱动用户自己的 Chrome，把 bioRxiv 预印本采集成图表和 CSV](./docs/assets/showcase-browser.webp)
 
 **随时随地做研究——连手机都行。** 内置的认证网关把*真正的*桌面 UI 提供给局域网里的浏览器(或通过隧道),这样你就能在电脑前发起一次运行,再在手机上查看完成的图表和报告。
 

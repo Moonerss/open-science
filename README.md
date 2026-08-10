@@ -117,7 +117,7 @@ unsourced numbers and figure/code inconsistencies flagged — before anything sh
 **Drives your own Chrome.** The agent reads the live web through your real browser
 profile — logins and all — then turns what it finds into a figure and a sortable CSV.
 
-![The agent driving the user's own Chrome via browser-control to harvest bioRxiv preprints into a chart and CSV](./docs/assets/showcase-browser.webp)
+![The agent driving the user's own Chrome via open-science-browser to harvest bioRxiv preprints into a chart and CSV](./docs/assets/showcase-browser.webp)
 
 **Research from anywhere — even your phone.** A built-in authenticated gateway serves
 the *real* desktop UI to a browser on your LAN (or a tunnel), so you can kick off a run

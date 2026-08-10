@@ -500,6 +500,13 @@ export async function agentBrowserBin(): Promise<string> {
   return invoke<string>("agent_browser_bin");
 }
 
+/** Absolute path to the desktop executable's browser MCP proxy mode. */
+export async function browserMcpBin(): Promise<string> {
+  if (!isTauri) throw new Error("not running in the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("browser_mcp_bin");
+}
+
 /** The user's Chrome profiles (empty when no Chrome / not desktop). */
 export async function agentBrowserProfiles(): Promise<BrowserProfile[]> {
   if (!isTauri) return [];
@@ -511,9 +518,15 @@ export async function agentBrowserProfiles(): Promise<BrowserProfile[]> {
   }
 }
 
-/** First installed Chrome/Chromium/Edge/Brave, or null. Setting its path as the
- *  browser executable avoids a Chrome-for-Testing download and (on macOS) lets
- *  the real profile's cookies decrypt without a Keychain prompt. */
+/** Close every browser session in Open Science Desktop's private namespace. */
+export async function closeAgentBrowser(): Promise<void> {
+  if (!isTauri) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("close_agent_browser");
+}
+
+/** First installed Chrome/Chromium/Edge/Brave, or null. Its executable can run
+ *  a separate managed browser and avoids a Chrome-for-Testing download. */
 export async function detectChrome(): Promise<ChromeInfo | null> {
   if (!isTauri) return null;
   const { invoke } = await import("@tauri-apps/api/core");
