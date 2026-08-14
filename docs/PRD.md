@@ -42,10 +42,10 @@ Required support:
 | macOS Apple Silicon | `.dmg` / `.app` | P0 |
 | macOS Intel | `.dmg` / `.app` | P1 |
 | Windows x64 | `.exe` NSIS installer | P0 |
-| Windows x64 | `.msi` installer | P1 |
 
-Tauri officially supports macOS and Windows and can package `dmg`, `app`, `nsis`,
-and `msi` targets; Windows can ship as `.msi` or an NSIS `setup.exe`.
+Tauri can package `dmg`, `app`, `nsis`, and `msi` targets. Windows ships NSIS
+only: it is the sole Windows target supporting per-user install, and shipping
+`.msi` alongside it registered one app twice and broke upgrades (issue #113).
 
 ### 2.2 Differentiation
 

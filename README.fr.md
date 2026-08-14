@@ -154,7 +154,7 @@ Connecteurs MCP scientifiques en un clic : recherche bibliographique, bases biom
 Téléchargez la dernière version depuis [Releases](https://github.com/ai4s-research/open-science/releases/latest).
 
 - **macOS** : `.dmg` / `.app`, Apple Silicon et Intel, macOS 13 Ventura ou plus récent.
-- **Windows** : `.exe` NSIS et `.msi`, Windows 10/11 x64.
+- **Windows** : `.exe` NSIS, Windows 10/11 x64. Installation par utilisateur, sans droits administrateur.
 - **Linux** : `.deb` et `.rpm` pour x86_64.
 
 Les paquets macOS sont signés avec un Developer ID, notarisés et agrafés : ils s'ouvrent normalement, sans passer par `xattr`. Les builds Windows et Linux ne sont pas encore signés.

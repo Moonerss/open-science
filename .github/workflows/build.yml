@@ -1,7 +1,7 @@
 name: build
 
-# Builds macOS (.dmg/.app), Windows (NSIS .exe / .msi) and Linux
-# (.deb/.rpm/.AppImage) installers. Each platform's installer can only be
+# Builds macOS (.dmg/.app), Windows (NSIS .exe) and Linux
+# (.deb/.rpm) installers. Each platform's installer can only be
 # produced on its own runner — hence the matrix. On a `v*` tag push the
 # installers are also attached to a draft GitHub Release.
 
@@ -153,10 +153,15 @@ jobs:
           # Linux: deb+rpm only. AppImage is off because linuxdeploy runs ldd
           # on every bundled ELF and ldd exits 1 on the Bun-built opencode
           # sidecar, aborting the whole bundle (tauri-apps/tauri#8929).
+          # Windows: NSIS only. Shipping the WiX .msi alongside it gave one app
+          # two independent install/uninstall registrations, and an .msi install
+          # sends the NSIS installer down its fragile WiX-migration path
+          # (issue #113). NSIS is also the only Windows target that supports the
+          # per-user install this app uses.
           # macOS submits the signed app without blocking inside Tauri. The
           # following steps preserve that exact app, wait with a bounded retry
           # loop, staple it, and create the final DMG.
-          args: --target ${{ matrix.target }} ${{ startsWith(matrix.platform, 'macos') && env.MACOS_SIGNING_ENABLED == 'true' && '--bundles app --skip-stapling' || startsWith(matrix.platform, 'macos') && '--bundles dmg' || startsWith(matrix.platform, 'ubuntu') && '--bundles deb,rpm' || '' }}
+          args: --target ${{ matrix.target }} ${{ startsWith(matrix.platform, 'macos') && env.MACOS_SIGNING_ENABLED == 'true' && '--bundles app --skip-stapling' || startsWith(matrix.platform, 'macos') && '--bundles dmg' || startsWith(matrix.platform, 'ubuntu') && '--bundles deb,rpm' || '--bundles nsis' }}
           # On a v* tag push, attach installers to a draft GitHub Release.
           # Empty tagName (workflow_dispatch) skips release creation.
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
@@ -172,8 +177,9 @@ jobs:
             - Developer ID-signed and notarized. Open the DMG and drag **Open Science** into Applications.
             - When you use an existing project in place, allow access to its folder if macOS asks.
 
-            **Windows** — `…_x64-setup.exe` or `…_x64_en-US.msi`
+            **Windows** — `…_x64-setup.exe`
             - SmartScreen shows *"Windows protected your PC"* → **More info** → **Run anyway**.
+            - Upgrading: the setup installs over the previous version, so *"Do not uninstall"* is the safe choice. If you do uninstall first, leave **"Delete application data"** unchecked — it erases `%APPDATA%\com.ai4s.workbench`, which holds every session and run.
 
             **Linux** — `.deb` / `.rpm`
             - `sudo apt install ./…_amd64.deb`  or  `sudo rpm -i …x86_64.rpm`
@@ -255,8 +261,6 @@ jobs:
           path: |
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.rpm
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
           if-no-files-found: warn

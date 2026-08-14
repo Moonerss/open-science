@@ -43,6 +43,12 @@
       "infoPlist": "./Info.plist",
       "minimumSystemVersion": "13.0"
     },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "nsis/hooks.nsh"
+      }
+    },
     "resources": {
       "../../../runtime/goal-plugin": "goal-plugin/",
       "../../../runtime/browser-plugin": "browser-plugin/",

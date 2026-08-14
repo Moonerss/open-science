@@ -221,7 +221,7 @@ Download the latest installer from the
 [Releases page](https://github.com/ai4s-research/open-science/releases/latest).
 
 - **macOS**: `.dmg` / `.app`, Apple Silicon and Intel, macOS 13 Ventura or later.
-- **Windows**: NSIS `.exe` and `.msi`, Windows 10/11 x64.
+- **Windows**: NSIS `.exe`, Windows 10/11 x64. Installs per user, no admin needed.
 - **Linux**: `.deb` and `.rpm` on x86_64 Linux.
 
 The macOS packages are Developer ID signed, notarized, and stapled, so they open

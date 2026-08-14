@@ -154,7 +154,7 @@ Formerly Open Science. Claude Science などの AI-for-science ワークベン�
 [Releases](https://github.com/ai4s-research/open-science/releases/latest) から最新版をダウンロードしてください。
 
 - **macOS**: `.dmg` / `.app`、Apple Silicon と Intel、macOS 13 Ventura 以降。
-- **Windows**: NSIS `.exe` と `.msi`、Windows 10/11 x64。
+- **Windows**: NSIS `.exe`、Windows 10/11 x64。ユーザーごとにインストールされ、管理者権限は不要です。
 - **Linux**: x86_64 Linux 向け `.deb` と `.rpm`。
 
 macOS パッケージは Developer ID 署名・Notarization・staple 済みで、そのまま開けます（`xattr` の回避策は不要）。Windows と Linux のビルドはまだ署名されていません。
