@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useLayoutEffect, useState, type RefObject } from "react";
 
 /**
  * True while the observed element is narrower than `minPx` — the cue for a
@@ -9,12 +9,25 @@ import { useEffect, useState, type RefObject } from "react";
  * pane is narrow for reasons a media query cannot see (a sibling pane, an open
  * inspector, the sidebar). Pane count is not a proxy either — a lone pane in a
  * small window is just as cramped.
+ *
+ * The first measurement happens in a layout effect, before the browser paints.
+ * Waiting for the ResizeObserver's first callback instead meant every mount
+ * painted the wide layout and corrected a frame later, so switching to a Screen
+ * with tiled panes visibly flashed the composer and the session header from
+ * icon+label down to icon.
  */
 export function useCompactWidth(ref: RefObject<HTMLElement | null>, minPx: number): boolean {
   const [compact, setCompact] = useState(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = ref.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+    if (!el) return;
+    // Only a positive width is a real measurement. Zero means the element is
+    // not laid out yet — a hidden ancestor, or a test environment with no
+    // layout at all — and treating that as "narrow" would collapse a toolbar
+    // that is about to be perfectly wide. Leave it to the observer.
+    const width = el.getBoundingClientRect().width;
+    if (width > 0) setCompact(width < minPx);
+    if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(([entry]) => {
       setCompact((entry?.contentRect.width ?? 0) < minPx);
     });
