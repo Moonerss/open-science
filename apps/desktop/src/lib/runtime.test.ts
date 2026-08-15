@@ -340,6 +340,34 @@ describe("historyToThread", () => {
     expect(t.blocks[2]).toMatchObject({ kind: "tool-call", status: "success" });
   });
 
+  // Reported after a restart: `/goal read the docs…` showed correctly while
+  // live, then reopened as the goal plugin's entire instruction block. The
+  // collapse itself works — it just needs the command templates, and a cold
+  // open could render history before the catalog arrived. This pins both the
+  // collapse and what its absence looks like, so the ordering guarantee in
+  // openSession/loadHistory has something to fail against.
+  it("collapses a stored slash-command expansion back to what was typed", () => {
+    const template =
+      'OpenCode goal mode command "/goal" was invoked.\n\nArguments:\n' +
+      "<goal_command_arguments>\n$ARGUMENTS\n</goal_command_arguments>\n\n" +
+      "Use the goal tools to handle this command:\n- If the arguments are empty, call get_goal.";
+    const expanded = template.replace("$ARGUMENTS", "read the docs, then build the repo");
+    const msgs: HistoryMessage[] = [{ role: "user", parts: [{ type: "text", text: expanded }] }];
+
+    const withCommands = historyToThread(msgs, [
+      { name: "goal", description: "goal mode", template },
+    ]);
+    expect(withCommands.blocks[0]).toMatchObject({
+      kind: "user",
+      text: "/goal read the docs, then build the repo",
+    });
+
+    // Without the templates there is nothing to collapse against, and the raw
+    // expansion is what the user sees — the bug as reported.
+    const withoutCommands = historyToThread(msgs);
+    expect(withoutCommands.blocks[0]).toMatchObject({ kind: "user", text: expanded });
+  });
+
   // Every subagent in a reloaded conversation was unopenable: the live fold
   // keeps the spawned session id from the event, but rebuilding history dropped
   // it, so the panel had nothing to open.

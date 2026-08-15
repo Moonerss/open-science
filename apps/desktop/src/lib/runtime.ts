@@ -468,6 +468,14 @@ const SWITCH_HEAL_GRACE_MS = 15_000;
 /** React StrictMode mounts effects twice in development. Share the same boot
  *  promise so duplicate AppShell effects cannot start dueling connect loops. */
 let bootstrapInFlight: Promise<void> | null = null;
+/** The catalog load currently in flight. connect() fires loadCatalog without
+ *  awaiting it, so history could render before the command list arrived — and
+ *  history needs it: OpenCode stores a slash command's EXPANDED template as the
+ *  user message, and collapsing it back to "/name args" needs the templates.
+ *  Without them a reopened session showed the raw expansion (the goal plugin's
+ *  whole instruction block instead of the one line the user typed). Awaiting
+ *  the in-flight load costs no extra request — it is already running. */
+let catalogInFlight: Promise<void> | null = null;
 /** Registered once: the remote-access gateway tells us when a LAN/CLI client
  *  created or deleted a session so the sidebar re-lists (no OpenCode event for
  *  session create/delete). See docs/rfc/remote-access-gateway.md. */
@@ -1925,6 +1933,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
 
   loadCatalog: async () => {
     if (!client) return;
+    const run = (async () => {
     void get().refreshAgentModels();
     try {
       const [firstSkills, agents, defaultModel, commands, providers] = await Promise.all([
@@ -1982,6 +1991,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       set({ skills });
     } catch {
       /* ignore transient failures */
+    }
+    })();
+    catalogInFlight = run;
+    try {
+      await run;
+    } finally {
+      if (catalogInFlight === run) catalogInFlight = null;
     }
   },
 
@@ -3147,6 +3163,12 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     if (get().threads[id]?.loaded) return;
     try {
       const messages = await client.getMessages(id);
+      // The command templates are what turn a stored expansion back into the
+      // "/name args" the user typed. connect() starts the catalog without
+      // awaiting it, so on a cold open this can still be in flight — join it
+      // rather than render the raw expansion. No extra request: it is the same
+      // load already running.
+      if (catalogInFlight && get().commands.length === 0) await catalogInFlight;
       if (seq !== openSessionSeq || get().currentId !== id) return;
       // A replayed ACP session reports its selectors during the load — show the
       // model it is actually on, not the one the last session used.
@@ -3192,6 +3214,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // getMessages is session-scoped (server routes by the session's folder),
       // so any connected client works — no folder switch, unlike openSession.
       const messages = await c.getMessages(id);
+      // Same reason as openSession: without the command templates a stored
+      // slash-command expansion renders raw.
+      if (catalogInFlight && get().commands.length === 0) await catalogInFlight;
       if (get().threads[id]?.loaded) return; // a live fold beat us to it
       set((s) => ({
         threads: { ...s.threads, [id]: { ...historyToThread(messages, s.commands), loaded: true } },
