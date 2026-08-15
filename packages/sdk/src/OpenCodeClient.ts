@@ -735,7 +735,14 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
         // OpenCode carries a per-model `variants` map (variant name → provider
         // options) built from models.dev + config; a model with no reasoning
         // levels has none. We surface just the ordered names.
-        models?: Record<string, { name?: string; variants?: Record<string, unknown> }>;
+        models?: Record<
+          string,
+          {
+            name?: string;
+            variants?: Record<string, unknown>;
+            limit?: { context?: number };
+          }
+        >;
       }>;
     };
     return (body.providers ?? []).map((p) => ({
@@ -745,6 +752,9 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
         id,
         name: m.name ?? id,
         variants: orderVariants(Object.keys(m.variants ?? {})),
+        // 0 and "absent" mean the same thing here — OpenCode reports an unknown
+        // window as 0 — so normalise to 0 and let callers test one value.
+        contextLimit: m.limit?.context ?? 0,
       })),
     }));
   }

@@ -117,7 +117,9 @@
       "smarter": "Klüger",
       "followingAgent": "Folgt dem Agenten {{agent}}",
       "followAgent": "Dem Agenten {{agent}} folgen",
-      "useDefault": "Globale Vorgabe verwenden"
+      "useDefault": "Globale Vorgabe verwenden",
+      "unknownContextTitle": "Kontextfenster unbekannt",
+      "unknownContextBody": "Die automatische Komprimierung bleibt für dieses Modell aus, das Gespräch wächst unbegrenzt und lange Durchläufe bleiben irgendwann hängen. Fenstergröße unter Einstellungen → Modelle setzen."
     },
     "reference": {
       "filesAria": "Dateien im Arbeitsbereich",

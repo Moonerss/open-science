@@ -117,7 +117,9 @@
       "smarter": "高性能",
       "followingAgent": "{{agent}} エージェントの設定に従っています",
       "followAgent": "{{agent}} エージェントの設定に従う",
-      "useDefault": "グローバル既定を使用"
+      "useDefault": "グローバル既定を使用",
+      "unknownContextTitle": "コンテキストウィンドウが不明です",
+      "unknownContextBody": "このモデルでは自動圧縮が働かないため、会話が際限なく大きくなり、長いターンは最終的に停止します。「設定 → モデル」でウィンドウサイズを設定してください。"
     },
     "reference": {
       "filesAria": "ワークスペースのファイル",

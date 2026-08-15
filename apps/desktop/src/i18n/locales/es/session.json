@@ -117,7 +117,9 @@
       "smarter": "Más inteligente",
       "followingAgent": "Siguiendo al agente {{agent}}",
       "followAgent": "Seguir al agente {{agent}}",
-      "useDefault": "Usar el modelo predeterminado global"
+      "useDefault": "Usar el modelo predeterminado global",
+      "unknownContextTitle": "Ventana de contexto desconocida",
+      "unknownContextBody": "La compactación automática no se aplica a este modelo, la conversación crece sin límite y los turnos largos acaban bloqueándose. Define la ventana en Ajustes → Modelos."
     },
     "reference": {
       "filesAria": "Archivos del espacio de trabajo",

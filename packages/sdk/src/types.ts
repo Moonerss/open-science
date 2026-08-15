@@ -328,6 +328,14 @@ export interface ProviderModelInfo {
    *  native param (OpenAI reasoningEffort, Anthropic thinking, …). `listProviders`
    *  always sets it (possibly []); optional so terse fixtures can omit it. */
   variants?: string[];
+  /** Context window in tokens, or 0 when OpenCode does not know it — which it
+   *  does not for any model missing from models.dev whose limit nobody typed
+   *  in, i.e. most custom endpoints. Load-bearing, not decorative: OpenCode
+   *  skips auto-compaction outright on a zero window (`limit.context === 0`
+   *  short-circuits its threshold check), so the conversation grows unbounded
+   *  and long agentic turns eventually stall sending it. Surfaced so the UI can
+   *  say so instead of leaving the user with a spinner. */
+  contextLimit?: number;
 }
 
 /** A provider OpenCode can use right now (auth present or public). */

@@ -117,7 +117,9 @@
       "smarter": "更强",
       "followingAgent": "跟随 {{agent}} 智能体设置",
       "followAgent": "跟随 {{agent}} 智能体设置",
-      "useDefault": "使用全局默认模型"
+      "useDefault": "使用全局默认模型",
+      "unknownContextTitle": "上下文窗口未知",
+      "unknownContextBody": "该模型的自动压缩不会生效，对话会无限增长，长回合最终会卡住。请在“设置 → 模型”里填写窗口大小。"
     },
     "reference": {
       "filesAria": "工作区文件",

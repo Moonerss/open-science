@@ -11,8 +11,9 @@ const providers: ProviderInfo[] = [
     id: "openai",
     name: "OpenAI",
     models: [
-      { id: "gpt-5", name: "GPT-5", variants: ["low", "medium", "high"] },
-      { id: "gpt-mini", name: "GPT-mini", variants: [] }, // no reasoning levels
+      { id: "gpt-5", name: "GPT-5", variants: ["low", "medium", "high"], contextLimit: 400000 },
+      // no reasoning levels, and a window OpenCode does not know (custom endpoint)
+      { id: "gpt-mini", name: "GPT-mini", variants: [], contextLimit: 0 },
     ],
   },
 ];
@@ -118,5 +119,28 @@ describe("ModelPicker", () => {
     expect(dialog).not.toBeNull();
     // Advanced auto-expands so the effort slider is right there to adjust.
     expect(within(dialog).getByRole("slider")).toBeInTheDocument();
+  });
+
+  // A zero context window is not cosmetic: OpenCode skips auto-compaction
+  // entirely, so the conversation grows unbounded and long turns eventually
+  // stall with nothing but a spinner. The picker is where the model was chosen,
+  // so it is where that has to be said.
+  it("warns when the selected model has no known context window", async () => {
+    useRuntimeStore.setState({ defaultModel: "openai/gpt-mini" });
+    const user = userEvent.setup();
+    renderPicker();
+    await user.click(chip());
+    expect(
+      within(screen.getByRole("dialog")).getByText(/context window unknown/i),
+    ).toBeInTheDocument();
+  });
+
+  it("stays quiet when the window is known", async () => {
+    const user = userEvent.setup();
+    renderPicker(); // gpt-5, 400k window
+    await user.click(chip());
+    expect(
+      within(screen.getByRole("dialog")).queryByText(/context window unknown/i),
+    ).toBeNull();
   });
 });
