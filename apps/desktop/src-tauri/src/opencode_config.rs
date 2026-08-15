@@ -87,20 +87,39 @@ fn temp_dir_rules() -> serde_json::Map<String, Value> {
     rules
 }
 
+/// Permission key covering every browser tool. OpenCode names an MCP tool
+/// `<server>_<tool>` (each non-`[A-Za-z0-9_-]` character replaced by `_`), and
+/// wraps every MCP call in the same `ask` the builtin tools use — with the key
+/// matched as a glob, so one pattern covers the whole surface.
+fn browser_tools_key() -> String {
+    format!("{BROWSER_MCP_ID}_agent_browser_*")
+}
+
 fn approve_permission() -> Value {
     let mut bash = serde_json::Map::new();
     for t in DANGEROUS_BASH {
         bash.insert(format!("{t} *"), json!("ask"));
         bash.insert(format!("* {t} *"), json!("ask"));
     }
-    json!({
+    let mut permission = json!({
         "bash": Value::Object(bash),
         "webfetch": "ask",
         // Scratch space is not a "dangerous command" — the only thing this mode
         // promises to gate — so the builtin ask on temp paths is pure noise.
         // Everything else outside the workspace still inherits that ask.
         "external_directory": Value::Object(temp_dir_rules()),
-    })
+    });
+    // Driving a browser is an outward connection like `webfetch`, and it was the
+    // only one this mode let through silently: MCP tools match OpenCode's
+    // builtin `"*": "allow"` and never prompted. That made the cheap tool the
+    // one that interrupts and the expensive one the one that does not — exactly
+    // backwards. `always: ["*"]` on OpenCode's side means "allow always" saves a
+    // rule for the project, so this is one prompt, not one per browser step.
+    permission
+        .as_object_mut()
+        .unwrap()
+        .insert(browser_tools_key(), json!("ask"));
+    permission
 }
 
 /// Set the approval mode in OpenCode config JSON. "approve" installs the ask
@@ -148,6 +167,25 @@ pub fn migrate_external_directory(existing: &str) -> Option<String> {
         _ => Value::Object(temp_dir_rules()),
     };
     permission.insert("external_directory".to_string(), rules);
+    serde_json::to_string_pretty(&root).ok()
+}
+
+/// Back-fill the browser ask rule for installs that chose "approve" before it
+/// existed — a chosen mode is never re-seeded, so without this they would keep
+/// driving a browser with no prompt. Approve mode only: "full" means no
+/// approvals at all. Returns None once the key is present, whatever it holds,
+/// so a user who edits it to "allow" keeps that.
+pub fn migrate_browser_permission(existing: &str) -> Option<String> {
+    if permission_mode_of(existing)? != MODE_APPROVE {
+        return None;
+    }
+    let mut root: Value = serde_json::from_str(existing).ok()?;
+    let permission = root.get_mut("permission")?.as_object_mut()?;
+    let key = browser_tools_key();
+    if permission.contains_key(&key) {
+        return None;
+    }
+    permission.insert(key, json!("ask"));
     serde_json::to_string_pretty(&root).ok()
 }
 
@@ -803,6 +841,29 @@ mod tests {
         // builtin "*": "allow" (rules are last-match-wins, ours come last).
         assert!(!bash.contains_key("*"));
         assert_eq!(v["permission"]["webfetch"], "ask");
+        // An outward connection through the browser is gated like webfetch;
+        // without this rule MCP tools match the builtin "*": "allow" and the
+        // expensive path is the silent one.
+        assert_eq!(v["permission"]["open-science-browser_agent_browser_*"], "ask");
+    }
+
+    #[test]
+    fn browser_ask_is_backfilled_for_approve_mode_only() {
+        // Approve-mode config written before the browser rule existed.
+        let stale = r#"{"permission":{"bash":{"rm *":"ask"},"webfetch":"ask"}}"#;
+        let out = migrate_browser_permission(stale).expect("approve config is back-filled");
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["permission"]["open-science-browser_agent_browser_*"], "ask");
+        // Idempotent, and a user who relaxed the rule keeps their choice.
+        assert!(migrate_browser_permission(&out).is_none());
+        let relaxed = r#"{"permission":{"bash":{"rm *":"ask"},
+            "open-science-browser_agent_browser_*":"allow"}}"#;
+        assert!(migrate_browser_permission(relaxed).is_none());
+        // Full mode means no approvals at all — nothing to back-fill there.
+        let full = set_permission_mode("", MODE_FULL).unwrap();
+        assert!(migrate_browser_permission(&full).is_none());
+        // First run has no mode yet; seeding owns that path.
+        assert!(migrate_browser_permission("{}").is_none());
     }
 
     #[test]

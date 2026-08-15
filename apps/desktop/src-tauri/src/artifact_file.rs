@@ -274,7 +274,7 @@ pub fn reveal_path(app: AppHandle, path: String, root: Option<String>) -> Result
 fn reveal_impl(full: &Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     let arg = format!("/select,\"{}\"", native_path(full));
-    std::process::Command::new("explorer")
+    crate::runtime::quiet_command("explorer")
         .raw_arg(arg)
         .spawn()
         .map(|_| ())

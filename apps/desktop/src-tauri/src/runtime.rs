@@ -1104,6 +1104,12 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
     if let Some(migrated) = crate::opencode_config::migrate_external_directory(&existing) {
         std::fs::write(&cfg_file, migrated).map_err(|e| e.to_string())?;
     }
+    // Same reason, same one-time shape: approve mode gained a browser ask rule
+    // after these installs picked their mode.
+    let existing = std::fs::read_to_string(&cfg_file).unwrap_or_default();
+    if let Some(migrated) = crate::opencode_config::migrate_browser_permission(&existing) {
+        std::fs::write(&cfg_file, migrated).map_err(|e| e.to_string())?;
+    }
     // Rename the legacy browser MCP id, then hide the incompatible user skill
     // with that old name while the official connector is configured.
     let existing = std::fs::read_to_string(&cfg_file).unwrap_or_default();
@@ -1533,6 +1539,35 @@ mod tests {
         workspace_skill_dirs,
     };
     use std::fs;
+
+    /// The rule stated above `quiet_command`, enforced. A raw `Command::new` in
+    /// shipped code opens a console window on Windows — 0.4.0 shipped one that
+    /// stayed open beside the app for every agent-browser MCP server the runtime
+    /// started (#114). Test code is exempt: it never runs inside the packaged app.
+    #[test]
+    fn shipped_code_never_spawns_with_a_raw_command() {
+        const DEFINITION: &str = "let mut cmd = std::process::Command::new(bin);";
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut offenders = Vec::new();
+        for entry in fs::read_dir(&src).expect("src/ is readable") {
+            let path = entry.expect("directory entry").path();
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let text = fs::read_to_string(&path).expect("source is readable");
+            // Everything from the file's first `#[cfg(test)]` on is test-only.
+            let shipped = text.split("#[cfg(test)]").next().unwrap_or_default();
+            for (i, line) in shipped.lines().enumerate() {
+                if line.contains("Command::new(") && line.trim() != DEFINITION {
+                    offenders.push(format!("{}:{}", path.display(), i + 1));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "spawn through crate::runtime::quiet_command instead: {offenders:?}"
+        );
+    }
 
     #[test]
     fn auth_store_provider_lookup() {

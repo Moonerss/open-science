@@ -79,6 +79,7 @@ cat > "$ADAPTER" <<'ADAPTER_EOF'
 
 When Browser Control is enabled in Settings, this app provides the version-matched `open-science-browser` MCP server. Apply the official workflow below through its `agent_browser_*` MCP tools.
 
+- A browser is the last rung of the ladder, not the first. Read a page, an API, or a file with the built-in web fetch tool; find pages with the built-in web search tool; use `gh` for anything on GitHub and `curl` or another CLI tool for a plain download. Open a browser only for what those cannot do: JavaScript-rendered content, a signed-in session, interaction, or a screenshot — or when one of them has actually failed. Being enabled is not a reason to use it. Every browser step also costs the user an approval prompt.
 - Never install, upgrade, or run `agent-browser` through Bash. Do not load a user skill named `browser-control`; it belongs to a different integration.
 - If the `agent_browser_*` tools are unavailable, ask the user to enable Browser Control in Settings; do not fall back to the CLI.
 - Before the first browser action, call `agent_browser_inventory`. It reports this conversation's browser and tabs, whether to open or reuse them, and only aggregate counts for other conversations.
@@ -97,7 +98,7 @@ awk -v adapter="$ADAPTER" '
     next
   }
   frontmatter == 1 && $0 ~ /^description:/ {
-    print "description: Official version-matched agent-browser guide for Open Science Desktop. Use this skill for browser navigation, interaction, extraction, screenshots, tabs, forms, and authentication in this app; do not use the unrelated browser-control skill."
+    print "description: Official version-matched agent-browser guide for Open Science Desktop. Use this skill only when a task needs a real browser: JavaScript-rendered pages, a signed-in session, clicking or typing, forms, tabs, or screenshots. To read a page, an API, or a file, use the built-in web fetch tool; to find pages, the built-in web search tool; for GitHub use gh and for a plain download use curl. Do not use the unrelated browser-control skill."
     next
   }
   {
@@ -113,4 +114,9 @@ awk -v adapter="$ADAPTER" '
 printf '%s\n' "$AGENT_BROWSER_VERSION" > "$SKILLS_OUT/.version"
 grep -q '^name: open-science-browser$' "$SKILL_OUT/SKILL.md"
 grep -q '^## Open Science Desktop MCP adapter$' "$SKILL_OUT/SKILL.md"
+# Both halves of the "cheaper tools first" policy must survive the rewrite: the
+# description decides whether the skill is loaded at all, the bullet decides
+# what happens once it is.
+grep -q '^description: .*built-in web fetch tool' "$SKILL_OUT/SKILL.md"
+grep -q '^- A browser is the last rung of the ladder' "$SKILL_OUT/SKILL.md"
 echo "Placed official agent-browser skill v$AGENT_BROWSER_VERSION at $SKILL_OUT"

@@ -5,10 +5,11 @@
 //! schemas, blocks tools that can escape the current lease, and adds a private
 //! inventory view. The upstream MCP server still performs browser automation.
 
+use crate::runtime::quiet_command;
 use serde_json::{json, Value};
 use std::ffi::OsString;
 use std::io::{self, BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 pub const PROXY_FLAG: &str = "--browser-mcp";
 const BROWSER_NAMESPACE: &str = "open-science-desktop";
@@ -28,6 +29,19 @@ const APP_OWNED_ARGUMENTS: &[&str] = &[
     "headed",
     "webgpu",
 ];
+
+/// The one tool that actually launches Chrome.
+const OPEN_TOOL: &str = "agent_browser_open";
+
+/// Prepended to `agent_browser_open`'s description, and deliberately one
+/// sentence: a tool description is resident context, paid for on every request
+/// of every conversation. It carries only the decision — reach for something
+/// cheaper first — because that decision is made before the skill is loaded.
+/// The reasoning and the full ladder live in the skill, which is read on demand.
+const OPEN_PREFACE: &str = "Escalation only: try the built-in fetch and search \
+tools, and CLI tools like `gh` or `curl`, before this — a browser is for pages \
+that genuinely need one (JavaScript rendering, a signed-in session, interaction, \
+a screenshot).";
 
 const BLOCKED_TOOLS: &[&str] = &[
     // These can enumerate/switch another conversation or attach to a browser
@@ -61,7 +75,12 @@ fn run_inner(mut args: Vec<OsString>) -> Result<(), String> {
         return Err("missing agent-browser executable".to_string());
     }
     let agent_browser = args.remove(0);
-    let mut child = Command::new(&agent_browser)
+    // quiet_command, not Command::new: this proxy is the GUI-subsystem app
+    // executable re-invoked with --browser-mcp, so it owns no console. Spawning
+    // the console-subsystem agent-browser from here made Windows allocate a
+    // fresh console for it — a black terminal window that stayed open for the
+    // life of the MCP server, one per session the agent runtime started (#114).
+    let mut child = quiet_command(&agent_browser)
         .args(&args)
         .env("AGENT_BROWSER_NAMESPACE", BROWSER_NAMESPACE)
         .stdin(Stdio::piped())
@@ -313,8 +332,13 @@ fn protect_tool_list(response: &mut Value, include_inventory: bool) {
         }
         if let Some(description) = tool.get_mut("description") {
             let original = description.as_str().unwrap_or_default();
+            let preface = if name == OPEN_TOOL {
+                format!("{OPEN_PREFACE} ")
+            } else {
+                String::new()
+            };
             *description = json!(format!(
-                "{original} Uses only the browser lease owned by the current conversation."
+                "{preface}{original} Uses only the browser lease owned by the current conversation."
             ));
         }
     }
@@ -549,7 +573,7 @@ fn close_browser_session(agent_browser: &OsString, lease: &str) -> Result<(), St
 }
 
 fn run_agent_json(agent_browser: &OsString, args: &[&str]) -> Result<Value, String> {
-    let output = Command::new(agent_browser)
+    let output = quiet_command(agent_browser)
         .args(args)
         .output()
         .map_err(|e| format!("could not run agent-browser inventory: {e}"))?;
@@ -613,6 +637,28 @@ mod tests {
             .pointer("/inputSchema/properties/allowedDomains")
             .is_none());
         assert!(tools[1].pointer("/inputSchema/properties/all").is_none());
+    }
+
+    #[test]
+    fn only_the_launching_tool_is_marked_as_an_escalation() {
+        let mut response = json!({
+            "result": { "tools": [
+                { "name": "agent_browser_open", "description": "Open.", "inputSchema": {} },
+                { "name": "agent_browser_snapshot", "description": "Snapshot.", "inputSchema": {} }
+            ]}
+        });
+
+        protect_tool_list(&mut response, false);
+        let tools = response.pointer("/result/tools").unwrap();
+        let open = tools[0]["description"].as_str().unwrap();
+        let snapshot = tools[1]["description"].as_str().unwrap();
+        assert!(open.starts_with(OPEN_PREFACE));
+        assert!(open.contains("Open."));
+        // Resident context is charged per request, so the preface goes on the
+        // one tool that launches a browser and nowhere else — every other tool
+        // runs inside one, where that decision has already been made.
+        assert!(!snapshot.contains("Escalation only"));
+        assert!(snapshot.starts_with("Snapshot."));
     }
 
     #[test]
