@@ -1096,6 +1096,14 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
         }
         std::fs::write(&cfg_file, seeded).map_err(|e| e.to_string())?;
     }
+    // Installs that chose a mode before this app wrote any `external_directory`
+    // rules kept OpenCode's builtin ask on every path outside the workspace —
+    // the switch alone would never have refreshed them, since a chosen mode is
+    // never re-seeded. Back-fill once; it is additive and idempotent.
+    let existing = std::fs::read_to_string(&cfg_file).unwrap_or_default();
+    if let Some(migrated) = crate::opencode_config::migrate_external_directory(&existing) {
+        std::fs::write(&cfg_file, migrated).map_err(|e| e.to_string())?;
+    }
     // Rename the legacy browser MCP id, then hide the incompatible user skill
     // with that old name while the official connector is configured.
     let existing = std::fs::read_to_string(&cfg_file).unwrap_or_default();

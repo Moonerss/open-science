@@ -107,7 +107,9 @@ export async function importOpenCodeLogin(): Promise<boolean> {
 
 /** How agent actions get approved — the composer's Codex-style switch.
  *  "approve": dangerous shell commands (delete / install / remote / privilege)
- *  and web fetches prompt first. "full": everything in-workspace just runs. */
+ *  and web fetches prompt first, as does any path outside the workspace except
+ *  the OS temp dirs. "full": nothing prompts, paths outside the workspace
+ *  included. */
 export type ApprovalMode = "approve" | "full";
 
 /** The approval mode OpenCode's config currently holds ("approve" until changed). */

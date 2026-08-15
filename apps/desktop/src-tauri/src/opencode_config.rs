@@ -3,9 +3,17 @@
 use serde_json::{json, Value};
 
 /// Approval modes for agent tool use (the composer's Codex-style switch).
-/// OpenCode evaluates permission rules last-match-wins with user config rules
-/// appended after its builtin `"*": "allow"` — so "approve" only needs `ask`
-/// rules and everything unmatched still runs without a prompt.
+/// OpenCode flattens every ruleset into one list and evaluates it with
+/// `findLast`, appending the user config's rules after its builtin ones — so a
+/// rule written here always wins over the builtin it overlaps, and rules that
+/// overlap nothing simply add to the list.
+///
+/// The builtin ruleset is `"*": "allow"` for tools, but `external_directory`
+/// carries its own `"*": "ask"` sub-map that only pre-allows the worktree and
+/// OpenCode's private `<tmpdir>/opencode` scratch dir. That sub-map is why an
+/// `ask`-only config still prompts: every path outside the workspace — a
+/// literal `/tmp/x.py` included — hits it. Each mode below therefore has to
+/// say what it wants for `external_directory` explicitly.
 pub const MODE_APPROVE: &str = "approve";
 pub const MODE_FULL: &str = "full";
 
@@ -37,23 +45,74 @@ const DANGEROUS_BASH: &[&str] = &[
     "sbatch",
 ];
 
+/// Add `path` and the other spellings it can legitimately arrive as. macOS
+/// reports the per-user temp dir under `/var`, which is a symlink to
+/// `/private/var`, so a canonicalized path shows up with that prefix instead;
+/// `/tmp` has the same pair. Forward-slashed so the config stays portable.
+fn push_temp_root(roots: &mut Vec<String>, path: &str) {
+    let normalized = path.replace('\\', "/");
+    let root = normalized.trim_end_matches('/');
+    if root.is_empty() || roots.iter().any(|r| r == root) {
+        return;
+    }
+    roots.push(root.to_string());
+    if let Some(rest) = root.strip_prefix("/var/") {
+        push_temp_root(roots, &format!("/private/var/{rest}"));
+    } else if root == "/tmp" {
+        push_temp_root(roots, "/private/tmp");
+    }
+}
+
+/// Temp roots the agent may use without a prompt: the OS temp dir, plus the
+/// literal `/tmp` that agents reach for on Unix even when `TMPDIR` points
+/// elsewhere.
+fn temp_roots() -> Vec<String> {
+    let mut roots = Vec::new();
+    push_temp_root(&mut roots, &std::env::temp_dir().to_string_lossy());
+    if cfg!(unix) {
+        push_temp_root(&mut roots, "/tmp");
+    }
+    roots
+}
+
+/// `external_directory` allow rules for the temp roots. OpenCode asks with the
+/// target's parent directory joined to `*`, so `<root>/*` covers a file sitting
+/// directly in the root and `<root>/**` covers anything nested below it.
+fn temp_dir_rules() -> serde_json::Map<String, Value> {
+    let mut rules = serde_json::Map::new();
+    for root in temp_roots() {
+        rules.insert(format!("{root}/*"), json!("allow"));
+        rules.insert(format!("{root}/**"), json!("allow"));
+    }
+    rules
+}
+
 fn approve_permission() -> Value {
     let mut bash = serde_json::Map::new();
     for t in DANGEROUS_BASH {
         bash.insert(format!("{t} *"), json!("ask"));
         bash.insert(format!("* {t} *"), json!("ask"));
     }
-    json!({ "bash": Value::Object(bash), "webfetch": "ask" })
+    json!({
+        "bash": Value::Object(bash),
+        "webfetch": "ask",
+        // Scratch space is not a "dangerous command" — the only thing this mode
+        // promises to gate — so the builtin ask on temp paths is pure noise.
+        // Everything else outside the workspace still inherits that ask.
+        "external_directory": Value::Object(temp_dir_rules()),
+    })
 }
 
 /// Set the approval mode in OpenCode config JSON. "approve" installs the ask
-/// rules; "full" writes `"permission": {}` — zero rules (builtin defaults),
-/// with the key's presence marking that the user made a choice (so startup
-/// seeding never overrides it). Other keys are preserved.
+/// rules and pre-allows the temp roots; "full" clears every ask this app adds
+/// AND overrides the builtin `external_directory` ask, so no path prompts
+/// either — the mode means no approvals at all. The key's presence marks that
+/// the user made a choice, so startup seeding never overrides it. Other keys
+/// are preserved.
 pub fn set_permission_mode(existing: &str, mode: &str) -> Result<String, String> {
     let permission = match mode {
         MODE_APPROVE => approve_permission(),
-        MODE_FULL => json!({}),
+        MODE_FULL => json!({ "external_directory": { "*": "allow" } }),
         other => return Err(format!("unknown approval mode \"{other}\"")),
     };
     let mut root: Value = if existing.trim().is_empty() {
@@ -68,6 +127,28 @@ pub fn set_permission_mode(existing: &str, mode: &str) -> Result<String, String>
         .unwrap()
         .insert("permission".to_string(), permission);
     serde_json::to_string_pretty(&root).map_err(|e| e.to_string())
+}
+
+/// Back-fill the `external_directory` rules on a config written before this
+/// app set any. Without them OpenCode's builtin `{"*": "ask"}` stays in force
+/// and the agent prompts for every path outside the workspace — `/tmp`
+/// included — which neither mode intends. Returns None when the key is already
+/// there (whatever it holds, including a user's own edit) or when no mode has
+/// been chosen yet, so the seeding path stays in charge of first run.
+/// Additive: only the missing key is inserted, and re-running changes nothing.
+pub fn migrate_external_directory(existing: &str) -> Option<String> {
+    let mode = permission_mode_of(existing)?;
+    let mut root: Value = serde_json::from_str(existing).ok()?;
+    let permission = root.get_mut("permission")?.as_object_mut()?;
+    if permission.contains_key("external_directory") {
+        return None;
+    }
+    let rules = match mode {
+        MODE_FULL => json!({ "*": "allow" }),
+        _ => Value::Object(temp_dir_rules()),
+    };
+    permission.insert("external_directory".to_string(), rules);
+    serde_json::to_string_pretty(&root).ok()
 }
 
 /// Seed the "approve" default on first run (no `permission` key yet).
@@ -725,13 +806,81 @@ mod tests {
     }
 
     #[test]
-    fn full_mode_writes_empty_permission_marker() {
+    fn full_mode_drops_our_asks_and_overrides_the_builtin_path_ask() {
         let approved = set_permission_mode("", MODE_APPROVE).unwrap();
         let out = set_permission_mode(&approved, MODE_FULL).unwrap();
         let v: Value = serde_json::from_str(&out).unwrap();
-        // {} = zero rules = OpenCode builtin defaults; the key's presence
-        // marks "user chose this" so startup never re-seeds approve mode.
-        assert_eq!(v["permission"], json!({}));
+        // Every ask this app adds is gone…
+        assert_eq!(v["permission"], json!({ "external_directory": { "*": "allow" } }));
+        assert!(v["permission"].get("bash").is_none());
+        assert!(v["permission"].get("webfetch").is_none());
+        // …and the one remaining rule exists to beat OpenCode's builtin
+        // `external_directory: {"*": "ask"}`, which an empty object would
+        // leave in force and which is what made "full" still prompt on
+        // every path outside the workspace.
+        assert_eq!(v["permission"]["external_directory"]["*"], "allow");
+        // The key's presence still marks "user chose this", so startup never
+        // re-seeds approve mode over it.
+        assert_eq!(permission_mode_of(&out), Some(MODE_FULL));
+    }
+
+    #[test]
+    fn approve_mode_preallows_temp_roots_only() {
+        let out = set_permission_mode("", MODE_APPROVE).unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        let ext = v["permission"]["external_directory"].as_object().unwrap();
+        // Both spellings for each root: OpenCode asks with the target's parent
+        // joined to "*", so a file directly in the root needs "<root>/*" and
+        // anything nested needs "<root>/**".
+        for root in temp_roots() {
+            assert_eq!(ext[&format!("{root}/*")], "allow");
+            assert_eq!(ext[&format!("{root}/**")], "allow");
+        }
+        // No blanket allow: everything else outside the workspace still
+        // inherits the builtin ask, which is the point of this mode.
+        assert!(!ext.contains_key("*"));
+        assert!(!ext.is_empty());
+    }
+
+    #[test]
+    fn migrate_external_directory_backfills_each_mode_once() {
+        // An approve-mode config written before this app set any path rules.
+        let stale = r#"{"permission":{"bash":{"rm *":"ask"},"webfetch":"ask"}}"#;
+        let out = migrate_external_directory(stale).expect("approve config is back-filled");
+        let v: Value = serde_json::from_str(&out).unwrap();
+        let ext = v["permission"]["external_directory"].as_object().unwrap();
+        assert!(!ext.contains_key("*"), "approve keeps the builtin ask for other paths");
+        assert!(!ext.is_empty());
+        // Existing rules survive, and a second pass is a no-op.
+        assert_eq!(v["permission"]["bash"]["rm *"], "ask");
+        assert_eq!(v["permission"]["webfetch"], "ask");
+        assert!(migrate_external_directory(&out).is_none());
+
+        // The old full-mode marker was a bare {} — it gets the blanket allow.
+        let out = migrate_external_directory(r#"{"permission":{}}"#).unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["permission"]["external_directory"]["*"], "allow");
+
+        // Never touches a config that has no mode yet (first run seeds it), and
+        // never overwrites rules already present — including a user's own.
+        assert!(migrate_external_directory("{}").is_none());
+        assert!(
+            migrate_external_directory(r#"{"permission":{"external_directory":{"*":"deny"}}}"#)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn temp_roots_are_deduped_and_cover_the_private_aliases() {
+        let mut roots = Vec::new();
+        push_temp_root(&mut roots, "/var/folders/ab/T/");
+        push_temp_root(&mut roots, "/tmp");
+        // A trailing slash is trimmed, and re-adding the same root is a no-op.
+        push_temp_root(&mut roots, "/tmp/");
+        assert_eq!(
+            roots,
+            vec!["/var/folders/ab/T", "/private/var/folders/ab/T", "/tmp", "/private/tmp"]
+        );
     }
 
     #[test]
