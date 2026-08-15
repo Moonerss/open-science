@@ -427,6 +427,31 @@ describe("runtime authentication", () => {
     useRuntimeStore.setState({ serverUrl: url, status: "ready", error: null });
   });
 
+  it("a reconnect that lands fast never repaints the status", async () => {
+    // Switching Screens goes openSession → setWorkspace → connectRetry. Flipping
+    // the indicator to "connecting" synchronously made it stutter on a path
+    // where nothing was wrong, and — because `connected` is derived from status
+    // — dropped `connected` for a frame when `switching` cleared, re-running the
+    // pane-stream effect and re-handshaking streams that were already fine.
+    useRuntimeStore.setState({ status: "ready" });
+    const connect = vi
+      .spyOn(useRuntimeStore.getState(), "connect")
+      .mockImplementation(async () => {
+        useRuntimeStore.setState({ status: "ready" });
+      });
+
+    const seen: string[] = [];
+    const unsub = useRuntimeStore.subscribe((s) => {
+      if (seen[seen.length - 1] !== s.status) seen.push(s.status);
+    });
+    await useRuntimeStore.getState().connectRetry(3);
+    unsub();
+
+    expect(seen).not.toContain("connecting");
+    expect(useRuntimeStore.getState().status).toBe("ready");
+    connect.mockRestore();
+  });
+
   it("connect() passes the per-run runtime password to the SDK client", async () => {
     // The sidecar requires Basic auth (OPENCODE_SERVER_PASSWORD); an
     // unauthenticated client would 401 on every call.

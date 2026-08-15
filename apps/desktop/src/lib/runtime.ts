@@ -2767,7 +2767,22 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   // event stream" at the user mid-switch reads as breakage. The last error is
   // surfaced only if the whole retry window is exhausted.
   connectRetry: async (tries = 120) => {
-    set({ status: "connecting" });
+    // Same hold the SDK's own reconnect gets: a deliberate reconnect that
+    // succeeds immediately must not repaint every status consumer on the way
+    // through. Switching Screens goes openSession → setWorkspace →
+    // connectRetry, and this line used to flip the indicator to "connecting"
+    // and back within a frame or two — a visible stutter on a path where
+    // nothing was actually wrong. If the reconnect lands inside the grace,
+    // "ready" clears the timer and the flip is never shown.
+    if (get().status === "ready") {
+      if (statusBlipTimer === null)
+        statusBlipTimer = setTimeout(() => {
+          statusBlipTimer = null;
+          set({ status: "connecting" });
+        }, STATUS_BLIP_GRACE_MS);
+    } else {
+      set({ status: "connecting" });
+    }
     let lastError: string | null = null;
     for (let i = 0; i < tries; i++) {
       await get().connect();
