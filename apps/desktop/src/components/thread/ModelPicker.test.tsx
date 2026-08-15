@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -133,6 +133,19 @@ describe("ModelPicker", () => {
     expect(
       within(screen.getByRole("dialog")).getByText(/context window unknown/i),
     ).toBeInTheDocument();
+  });
+
+  it("spins only for a model switch, not a workspace move", async () => {
+    // `switching` covers any workspace move, and switching Screens is one — so
+    // reading it made the model chip spin on every Screen switch, next to a
+    // header that was already reflowing.
+    act(() => useRuntimeStore.setState({ switching: true, modelSwitching: false }));
+    renderPicker();
+    expect(chip().querySelector(".animate-spin")).toBeNull();
+
+    act(() => useRuntimeStore.setState({ modelSwitching: true }));
+    expect(chip().querySelector(".animate-spin")).not.toBeNull();
+    act(() => useRuntimeStore.setState({ switching: false, modelSwitching: false }));
   });
 
   it("stays quiet when the window is known", async () => {

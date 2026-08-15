@@ -442,7 +442,11 @@ export function SessionView({
             </h1>
           )}
           {eid && (
-            <GoalPill sessionId={eid} onResumed={() => void sendPrompt(GOAL_RESUME_NUDGE, sid ?? undefined)} />
+            <GoalPill
+              sessionId={eid}
+              compact={headerCompact}
+              onResumed={() => void sendPrompt(GOAL_RESUME_NUDGE, sid ?? undefined)}
+            />
           )}
           <div data-tauri-drag-region={asTitlebar || undefined} className="flex-1" />
           {eid && (

@@ -24,10 +24,16 @@ export const GOAL_RESUME_NUDGE = "Continue working toward the active goal.";
 export function GoalPill({
   sessionId,
   onResumed,
+  compact = false,
 }: {
   sessionId: string;
   /** Called after a successful resume — the page sends GOAL_RESUME_NUDGE. */
   onResumed?: () => void;
+  /** Drop the objective text, keeping the icon and the status word. In a tiled
+   *  pane the header has room for neither, and every other control there
+   *  already collapses to its icon; this one kept its full objective and
+   *  crowded them out. The objective stays in the hover tooltip. */
+  compact?: boolean;
 }) {
   const { t } = useTranslation("session");
   const [goal, setGoal] = useState<GoalState | null>(null);
@@ -109,7 +115,7 @@ export function GoalPill({
           !["active", "unmet", "complete"].includes(status) && !limited && "text-muted",
         )}
       />
-      <span className="max-w-[180px] truncate">{goal.objective}</span>
+      {!compact && <span className="max-w-[180px] truncate">{goal.objective}</span>}
       <span
         className={cn(
           "shrink-0 whitespace-nowrap",

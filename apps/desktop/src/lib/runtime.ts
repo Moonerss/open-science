@@ -338,6 +338,11 @@ interface RuntimeState {
    *  flip, no Connect button, no help card. Real failures surface after the
    *  retry window is exhausted, once this clears. */
   switching: boolean;
+  /** A MODEL switch is in flight. Deliberately separate from `switching`, which
+   *  covers any workspace move: the model chip spun on every Screen switch,
+   *  because moving folders sets that flag too and the chip read it as "your
+   *  model is changing". */
+  modelSwitching: boolean;
   /** A sendPrompt is in flight for SOME session (click → POST accepted). Kept as
    *  the OR of `sendingSessions` for single-pane call sites; per-pane composers
    *  read `sendingSessions[sessionId]` instead. */
@@ -1758,6 +1763,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     });
   },
   modelSwitchError: null,
+  modelSwitching: false,
   approvalMode: "approve",
   tools: [],
   hiddenExamples: initialHidden(),
@@ -2042,6 +2048,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     // won't revert it against a still-warming provider list (#37).
     lastSwitchModel = model;
     lastSwitchAt = Date.now();
+    set({ modelSwitching: true });
     // Applying the model PATCHes OpenCode's global config, which closes the
     // event stream server-side. EventSource's own reconnect does not reliably
     // recover from that — it strands the app in "connecting"/disconnected until
@@ -2078,7 +2085,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       set({ modelSwitchError: err instanceof Error ? err.message : String(err) });
       throw err;
     } finally {
-      set({ switching: false });
+      set({ switching: false, modelSwitching: false });
     }
   },
 

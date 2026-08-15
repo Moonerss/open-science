@@ -238,7 +238,9 @@ export function ModelPicker({
   const agentVariants = useRuntimeStore((s) => s.agentVariants);
   // The agent this pane's next turn runs on ("build", or "plan" in plan mode).
   const turnAgent = useRuntimeStore((s) => (sessionId ? agentForTurn(s, sessionId) : null));
-  const switching = useRuntimeStore((s) => s.switching);
+  // Only a MODEL switch spins this chip. `switching` also covers workspace
+  // moves, so reading it made the chip spin on every Screen switch.
+  const switching = useRuntimeStore((s) => s.modelSwitching);
 
   // When bound to a session (a split pane), the picker sets THAT pane's model /
   // effort — no global sidecar config PATCH, so other panes are untouched.
