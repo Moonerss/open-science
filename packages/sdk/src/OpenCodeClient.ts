@@ -614,7 +614,7 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
       info: {
         id?: string;
         role: "user" | "assistant";
-        time?: { completed?: number };
+        time?: { completed?: number; created?: number };
         error?: unknown;
         agent?: string;
       };
@@ -626,6 +626,7 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
         role: m.info.role,
         ...(m.info.id ? { id: m.info.id } : {}),
         completed: m.info.time?.completed,
+        created: m.info.time?.created,
         ...(error ? { error } : {}),
         ...(m.info.agent ? { agent: m.info.agent } : {}),
         parts: m.parts ?? [],

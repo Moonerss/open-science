@@ -76,6 +76,7 @@ const mocks = vi.hoisted(() => ({
   }),
   notifyPermissionRequest: vi.fn(async () => true),
   startRuntime: vi.fn(async () => "http://127.0.0.1:1"),
+  restartRuntime: vi.fn(async () => "http://127.0.0.1:2"),
   /** Skill install bridges (#61). */
   installSkillMarkdown: vi.fn(async (_text: string) => "pasted-skill"),
   workspaceSkillNames: vi.fn(async () => ["already-there"]),
@@ -89,6 +90,7 @@ vi.mock("./tauri", () => ({
   logDebug: async () => {},
   detectTools: async () => [],
   startRuntime: mocks.startRuntime,
+  restartRuntime: mocks.restartRuntime,
   workspacePath: async () => "/ws/base",
   setWorkspace: mocks.setWorkspace,
   newDatedWorkspace: mocks.newDatedWorkspace,
@@ -391,6 +393,32 @@ describe("runtime authentication", () => {
     expect(ok).toBe(false);
     expect(mocks.startRuntime).toHaveBeenCalledTimes(3); // one per failed attempt
     connect.mockRestore();
+  });
+
+  it("forces a fresh sidecar once retrying has stopped helping", async () => {
+    // The case startRuntime cannot see: the process is alive, so nothing
+    // terminates and nothing clears the lifecycle, but it has stopped serving.
+    // start_runtime keeps handing back the same dead URL, so retrying alone
+    // never recovers — observed as "opencode disconnects and will not
+    // reconnect". After the threshold, force a new process exactly once.
+    mocks.startRuntime.mockClear();
+    mocks.restartRuntime.mockClear();
+    const connect = vi
+      .spyOn(useRuntimeStore.getState(), "connect")
+      .mockImplementation(async () => {
+        useRuntimeStore.setState({ status: "error", error: "stream closed" });
+      });
+
+    const url = useRuntimeStore.getState().serverUrl;
+    // 9 attempts: eight quick retries (250 ms) then the forced one — enough to
+    // cross the threshold, short enough to stay inside the test timeout.
+    await useRuntimeStore.getState().connectRetry(9);
+
+    expect(mocks.restartRuntime).toHaveBeenCalledTimes(1); // once, not every attempt
+    expect(mocks.startRuntime).toHaveBeenCalledTimes(8); // the attempts before it
+    expect(useRuntimeStore.getState().serverUrl).toBe("http://127.0.0.1:2");
+    connect.mockRestore();
+    useRuntimeStore.setState({ serverUrl: url, status: "ready", error: null });
   });
 
   it("connect() passes the per-run runtime password to the SDK client", async () => {

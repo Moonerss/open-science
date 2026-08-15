@@ -90,6 +90,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             runtime::start_runtime,
+            runtime::restart_runtime,
+            runtime::runtime_started_at,
             runtime::runtime_password,
             gateway::gateway_status,
             gateway::acp_server_script,

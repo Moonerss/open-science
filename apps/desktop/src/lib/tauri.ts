@@ -18,11 +18,32 @@ export type ConfigureResult =
   | { ok: false; reason: "not-desktop" }
   | { ok: false; reason: "error"; message: string };
 
-/** Start the bundled OpenCode sidecar (desktop only). Returns its base URL. */
+/** Start the bundled OpenCode sidecar (desktop only). Returns its base URL.
+ *  Reuses a runtime it believes is running — see restartRuntime for when that
+ *  belief is wrong. */
 export async function startRuntime(): Promise<string | null> {
   if (!isTauri) return null;
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<string>("start_runtime");
+}
+
+/** Epoch ms the current sidecar started, 0 when none is running. Used to tell
+ *  a turn that is streaming now from one left half-written by a runtime that
+ *  has since died — see `turnStillStreaming`. */
+export async function runtimeStartedAt(): Promise<number> {
+  if (!isTauri) return 0;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<number>("runtime_started_at");
+}
+
+/** Kill whatever sidecar is there and spawn a fresh one on a new port. For the
+ *  case startRuntime cannot fix: the process is alive but has stopped serving,
+ *  so nothing terminates, nothing clears the lifecycle, and reconnecting dials
+ *  a port that will never answer. Returns the new base URL. */
+export async function restartRuntime(): Promise<string | null> {
+  if (!isTauri) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("restart_runtime");
 }
 
 /**

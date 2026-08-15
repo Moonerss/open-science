@@ -46,6 +46,8 @@ import {
   setProxySetting as persistProxySetting,
   setWorkspace,
   startRuntime,
+  restartRuntime,
+  runtimeStartedAt,
   workspacePath,
   workspaceSkillNames,
   type ApprovalMode,
@@ -345,6 +347,9 @@ interface RuntimeState {
    *  provider from looking like a silent "Working…" forever. Cleared by the
    *  session's next sign of life (stream events, idle, error). */
   retryNotices: Record<string, { attempt: number; message: string }>;
+  /** Epoch ms the current sidecar started; 0 until known. Anything stored
+   *  before it cannot be in flight now. */
+  runtimeStartedAt: number;
   /** Switch to an existing folder, or (with `dated`) create a new dated one.
    *  `key` is the draft slot the switch was made for — the folder becomes that
    *  draft's destination. Defaults to the global slot. */
@@ -479,6 +484,13 @@ function looksLikeSkillFile(text: string): boolean {
  *  repaints every status consumer, so a ready→connecting flip is held this
  *  long and only shown if the stream does not come back. */
 const STATUS_BLIP_GRACE_MS = 2000;
+
+/** Failed reconnect attempts to tolerate before forcing a brand-new sidecar.
+ *  Plain retries already cover first boot, a slow start, and a process that
+ *  died and was respawned; eight attempts span roughly four seconds, past all
+ *  of those. Beyond that the runtime is not coming back on its own — it is
+ *  alive but no longer serving, which nothing else in the app can detect. */
+const RECONNECT_FORCE_RESTART_AFTER = 8;
 let statusBlipTimer: ReturnType<typeof setTimeout> | null = null;
 function clearStatusBlip() {
   if (statusBlipTimer !== null) clearTimeout(statusBlipTimer);
@@ -812,9 +824,21 @@ export function turnIsOver(messages: HistoryMessage[]): boolean {
  *  than `!turnIsOver` — that also reads a trailing USER message as running, a
  *  shape a crashed or never-answered turn leaves behind for good, which would
  *  strand a permanent "Working…" on any session that reloads it (#59). */
-export function turnStillStreaming(messages: HistoryMessage[]): boolean {
+export function turnStillStreaming(
+  messages: HistoryMessage[],
+  runtimeStartedAt?: number,
+): boolean {
   const last = messages[messages.length - 1];
-  return !!last && last.role === "assistant" && !last.completed && !last.error;
+  if (!last || last.role !== "assistant" || last.completed || last.error) return false;
+  // A turn streaming RIGHT NOW and one that was streaming when its runtime died
+  // persist identically: assistant role, no `completed`, no `error`. Nothing in
+  // the stored shape can separate them, so quitting the app mid-turn left that
+  // session reading as "Working…" on every future load, forever — no error to
+  // retry, no process to finish it. Liveness has to come from something that
+  // dies with the process: a message created BEFORE the current runtime started
+  // cannot be one the current runtime is producing.
+  if (runtimeStartedAt && last.created && last.created < runtimeStartedAt) return false;
+  return true;
 }
 
 /** Streamed events that prove a session's turn is still in flight. Any of them
@@ -1697,6 +1721,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   stepCounts: {},
   shellTurns: {},
   retryNotices: {},
+  runtimeStartedAt: 0,
 
   // These write the CURRENT session's pane (DRAFT_KEY on a draft), keeping the
   // artifact inspector, the Files browser, and the Runs pane mutually exclusive
@@ -2682,8 +2707,19 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // call is cheap on the common path and the fix on the broken one.
       if (isTauri && !isGatewayWeb) {
         try {
-          const url = await startRuntime();
+          // A wedged runtime — alive, so nothing terminates and nothing clears
+          // the lifecycle, but no longer serving — is invisible to startRuntime,
+          // which hands back the same dead URL forever. Give plain retrying a
+          // fair chance first (a restart during normal boot would be pure
+          // thrash), then force a fresh process exactly once.
+          const url =
+            i === RECONNECT_FORCE_RESTART_AFTER
+              ? await restartRuntime()
+              : await startRuntime();
           if (url && url !== get().serverUrl) set({ serverUrl: url });
+          if (i === RECONNECT_FORCE_RESTART_AFTER) {
+            set({ runtimeStartedAt: await runtimeStartedAt() });
+          }
         } catch (err) {
           lastError = err instanceof Error ? err.message : String(err);
         }
@@ -2715,6 +2751,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         const url = await startRuntime();
         void logDebug(`bootstrap: runtime at ${url}`);
         if (url) set({ serverUrl: url });
+        // Needed before any session is loaded: it is what separates a live turn
+        // from one a dead runtime left half-written.
+        set({ runtimeStartedAt: await runtimeStartedAt() });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         void logDebug(`bootstrap FAILED: ${msg}`);
@@ -3015,7 +3054,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         // a session still mid-answer would otherwise reopen with no "Working…"
         // and no way to stop it — a silent long tool call streams no event to
         // re-lock it either (#59).
-        ...(turnStillStreaming(messages)
+        ...(turnStillStreaming(messages, get().runtimeStartedAt)
           ? { runningSessions: { ...s.runningSessions, [id]: true as const } }
           : {}),
       }));
@@ -3049,7 +3088,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         sessionAgents: { ...s.sessionAgents, [id]: lastAgentMode(messages) },
         // Same server-truth seeding as openSession — a background pane must not
         // adopt a still-running session as idle (#59).
-        ...(turnStillStreaming(messages)
+        ...(turnStillStreaming(messages, get().runtimeStartedAt)
           ? { runningSessions: { ...s.runningSessions, [id]: true as const } }
           : {}),
       }));

@@ -15,6 +15,11 @@ struct RuntimeLifecycle {
     child: Option<CommandChild>,
     url: Option<String>,
     port: Option<u16>,
+    /// Epoch ms the current sidecar was spawned. The frontend needs it to tell
+    /// a turn that is streaming now from one that was streaming when an earlier
+    /// sidecar died: both persist identically, and only "was this message
+    /// created before the process that would be producing it" separates them.
+    started_at: Option<u64>,
     /// Bumped on every spawn. The exit watcher captures the value its own
     /// sidecar was spawned with and only clears the lifecycle while it still
     /// matches, so a late exit from an already-replaced sidecar cannot wipe
@@ -1303,6 +1308,7 @@ fn restart_sidecar_if_running(
 
     let port = *lifecycle.port.get_or_insert_with(free_port);
     lifecycle.generation += 1;
+    lifecycle.started_at = Some(now_ms());
     let child = spawn_sidecar(app, port, lifecycle.generation)?;
     let url = format!("http://127.0.0.1:{port}");
     lifecycle.child = Some(child);
@@ -1329,11 +1335,61 @@ pub fn start_runtime(app: AppHandle, state: State<'_, RuntimeState>) -> Result<S
     // Reuse a stable port across restarts so the frontend URL doesn't change.
     let port = *lifecycle.port.get_or_insert_with(free_port);
     lifecycle.generation += 1;
+    lifecycle.started_at = Some(now_ms());
     let child = spawn_sidecar(&app, port, lifecycle.generation)?;
     let url = format!("http://127.0.0.1:{port}");
     lifecycle.child = Some(child);
     lifecycle.url = Some(url.clone());
     Ok(url)
+}
+
+/// Force a fresh sidecar, whatever state the current one is in.
+///
+/// `start_runtime` reuses a runtime it believes is running, which is right
+/// until the process is alive but no longer *serving*: nothing terminates, so
+/// nothing clears the lifecycle, and the app retries a port that will never
+/// answer again. A dead process is handled by the exit watcher; this is the
+/// escape hatch for a wedged one, and the reconnect loop reaches for it once
+/// plain retrying has clearly stopped helping.
+///
+/// Takes a NEW port rather than reusing the old one: the process being killed
+/// is by definition not responding, and kill() does not guarantee the port is
+/// released by the time we rebind. The caller adopts the returned URL.
+#[tauri::command]
+pub fn restart_runtime(app: AppHandle, state: State<'_, RuntimeState>) -> Result<String, String> {
+    let mut lifecycle = state.lifecycle.lock().unwrap();
+    if let Some(child) = lifecycle.child.take() {
+        let _ = child.kill();
+    }
+    lifecycle.url = None;
+    lifecycle.port = None;
+    let port = *lifecycle.port.get_or_insert_with(free_port);
+    lifecycle.generation += 1;
+    lifecycle.started_at = Some(now_ms());
+    let child = spawn_sidecar(&app, port, lifecycle.generation)?;
+    let url = format!("http://127.0.0.1:{port}");
+    lifecycle.child = Some(child);
+    lifecycle.url = Some(url.clone());
+    crate::debug_log::append(&app, &format!("runtime force-restarted on {url}"));
+    Ok(url)
+}
+
+/// Epoch ms, for stamping the sidecar's start time.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Epoch ms the current sidecar started, or 0 when none is running. The
+/// frontend compares stored message timestamps against it: anything written
+/// before this process began cannot be something this process is still
+/// producing.
+#[tauri::command]
+pub fn runtime_started_at(state: State<'_, RuntimeState>) -> Result<u64, String> {
+    let lifecycle = state.lifecycle.lock().map_err(|e| e.to_string())?;
+    Ok(lifecycle.started_at.unwrap_or(0))
 }
 
 /// The workspace directory the sidecar runs in — the frontend passes it to the

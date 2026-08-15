@@ -247,6 +247,12 @@ export interface HistoryMessage {
   /** Epoch ms when the message finished — unset while it is still streaming.
    *  On the LAST message this is the server's truth for "is the turn over". */
   completed?: number;
+  /** Epoch ms when the message was created. Needed to tell a turn that is
+   *  streaming RIGHT NOW from one that was streaming when its runtime died:
+   *  both persist identically (assistant, no `completed`, no `error`), and
+   *  only the timestamp says whether any live process could still be producing
+   *  it. See `turnStillStreaming`. */
+  created?: number;
   /** The error that ended this assistant turn, when it failed. Without it a
    *  failed turn whose live session.error was missed (SSE reconnect, app
    *  restart) reloads as an empty reply with no explanation at all. */

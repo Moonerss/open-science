@@ -4,6 +4,7 @@ import { AUTO_REVIEW_PROMPT } from "./autoReview";
 import {
   datedWorkspaceName,
   explainRuntimeError,
+  turnStillStreaming,
   foldCarriageReturns,
   foldEvent,
   historyToThread,
@@ -619,5 +620,41 @@ describe("redactForLog", () => {
     const long = redactForLog("the upstream provider refused this call. ".repeat(40));
     expect(long.length).toBeLessThanOrEqual(LOG_ERROR_CAP + 1);
     expect(long.endsWith("…")).toBe(true);
+  });
+});
+
+describe("turnStillStreaming", () => {
+  // Reproduced from a real install: the app was quit mid-turn, so the runtime
+  // died with the request in flight. What it left behind — assistant role, no
+  // `completed`, no `error` — is byte-for-byte what a turn streaming RIGHT NOW
+  // looks like, so every later load read it as live. That session sat on
+  // "Working…" for ten hours: no error to retry, no process to finish it, and
+  // no way for the user to tell. Liveness has to come from something that dies
+  // with the process.
+  const RUNTIME_START = 2_000;
+  const unfinished = (created: number) => [
+    { role: "user" as const, parts: [], completed: created - 1 },
+    { role: "assistant" as const, parts: [], created },
+  ];
+
+  it("treats an unfinished turn from a dead runtime as over", () => {
+    expect(turnStillStreaming(unfinished(1_000), RUNTIME_START)).toBe(false);
+  });
+
+  it("still reads a turn this runtime is producing as live", () => {
+    expect(turnStillStreaming(unfinished(3_000), RUNTIME_START)).toBe(true);
+  });
+
+  it("keeps the old behaviour when the runtime start is unknown", () => {
+    // Web/gateway clients have no local sidecar to compare against; there the
+    // stored shape is all we have, and calling a live turn dead would be worse.
+    expect(turnStillStreaming(unfinished(1_000))).toBe(true);
+  });
+
+  it("is unmoved by a finished or failed turn", () => {
+    const done = [{ role: "assistant" as const, parts: [], created: 3_000, completed: 3_100 }];
+    const failed = [{ role: "assistant" as const, parts: [], created: 3_000, error: "boom" }];
+    expect(turnStillStreaming(done, RUNTIME_START)).toBe(false);
+    expect(turnStillStreaming(failed, RUNTIME_START)).toBe(false);
   });
 });
