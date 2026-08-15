@@ -119,6 +119,7 @@ pub fn run() {
             runtime::adopt_workspace_skills,
             runtime::import_opencode_login,
             model_probe::probe_endpoint_models,
+            model_probe::zen_models,
             runtime::provider_auth_exists,
             runtime::remove_config_entry,
             jupyter::jupyter_status,

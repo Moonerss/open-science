@@ -336,6 +336,12 @@ export interface ProviderModelInfo {
    *  and long agentic turns eventually stall sending it. Surfaced so the UI can
    *  say so instead of leaving the user with a spinner. */
   contextLimit?: number;
+  /** False when the provider still advertises this model but no longer serves
+   *  it, so picking it can only fail. `listProviders` never sets this — the
+   *  runtime's catalog cannot tell — it is filled in by whoever can ask the
+   *  provider directly (the app does, for OpenCode Zen). Undefined means
+   *  nobody knows, which every consumer must read as available. */
+  available?: boolean;
 }
 
 /** A provider OpenCode can use right now (auth present or public). */

@@ -59,6 +59,17 @@ export async function probeEndpointModels(
 }
 
 /**
+ * Model ids OpenCode Zen actually serves right now (desktop only — opencode.ai
+ * sends no CORS headers, so the request runs in Rust). Throws when the list
+ * cannot be fetched; callers must fail open rather than hide every model.
+ */
+export async function zenServedModelIds(): Promise<string[]> {
+  if (!isTauri) return [];
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string[]>("zen_models");
+}
+
+/**
  * Pick local files via the native dialog and copy them into the agent
  * workspace (desktop only). Returns the workspace file names; [] on cancel.
  */

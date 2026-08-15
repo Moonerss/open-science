@@ -119,7 +119,9 @@
       "followAgent": "Seguir al agente {{agent}}",
       "useDefault": "Usar el modelo predeterminado global",
       "unknownContextTitle": "Ventana de contexto desconocida",
-      "unknownContextBody": "La compactación automática no se aplica a este modelo, la conversación crece sin límite y los turnos largos acaban bloqueándose. Define la ventana en Ajustes → Modelos."
+      "unknownContextBody": "La compactación automática no se aplica a este modelo, la conversación crece sin límite y los turnos largos acaban bloqueándose. Define la ventana en Ajustes → Modelos.",
+      "retiredTitle": "El proveedor retiró el modelo",
+      "retiredBody": "{{model}} sigue configurado, pero el proveedor ya no lo sirve, así que todos los turnos fallan. Elige otro modelo arriba."
     },
     "reference": {
       "filesAria": "Archivos del espacio de trabajo",

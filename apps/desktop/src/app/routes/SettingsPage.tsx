@@ -60,6 +60,7 @@ import {
 } from "@/lib/tauri";
 import { useSetupStore } from "@/lib/setup";
 import { customProviderId } from "@/lib/customProviderId";
+import { listProvidersWithAvailability } from "@/lib/zenModels";
 import { RemoteComputeCard } from "@/components/settings/RemoteComputeCard";
 import { RemoteAccessCard } from "@/components/settings/RemoteAccessCard";
 import { AcpAgentsCard } from "@/components/settings/AcpAgentsCard";
@@ -223,7 +224,7 @@ export function SettingsPage() {
     // good list to keep showing. The rest is auxiliary settings data.
     let fresh: ProviderInfo[] | null = null;
     try {
-      fresh = await client.listProviders();
+      fresh = await listProvidersWithAvailability(client);
       setProviders(fresh);
       setCatalogState("ready");
     } catch {
@@ -1006,7 +1007,11 @@ export function SettingsPage() {
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
                     <span className="font-medium text-text">{p.name}</span>
                     <span className="text-xs text-muted">
-                      {t("providers.modelCount", { count: p.models.length })}
+                      {/* Counts what the picker will offer — a model the
+                          provider has retired is not one of them. */}
+                      {t("providers.modelCount", {
+                        count: p.models.filter((m) => m.available !== false).length,
+                      })}
                     </span>
                     <div className="flex-1" />
                     {p.id === "opencode" ? (

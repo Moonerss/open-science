@@ -78,6 +78,7 @@ import {
 } from "./autoReview";
 import { notifyPermissionRequest } from "./systemNotification";
 import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
+import { listProvidersWithAvailability } from "./zenModels";
 import { toast } from "@/lib/toast";
 import i18n from "@/i18n";
 
@@ -1830,7 +1831,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         client.listCommands().catch(() => []),
         // listProviders is OpenCodeClient-only (not on the AgentRuntime port);
         // opencodeClient is the same instance as `client`, set together.
-        opencodeClient ? opencodeClient.listProviders().catch(() => []) : Promise.resolve([]),
+        opencodeClient
+          ? listProvidersWithAvailability(opencodeClient).catch(() => [])
+          : Promise.resolve([]),
       ]);
       // A model switch in flight owns `defaultModel`: this read may predate
       // the switch's config write, and applying it would visibly revert the

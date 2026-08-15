@@ -293,6 +293,9 @@ export function ModelPicker({
   }, [providers]);
 
   const current = options.find((o) => o.key === model);
+  // Still configured, but the provider stopped serving it — the list below no
+  // longer offers it, so say why rather than let the next turn fail.
+  const currentRetired = current?.available === false;
   const contextUnknown = !!model && (contextByKey.get(model) ?? 0) === 0;
   const currentVariants = (model && variantsByKey.get(model)) || [];
   // The effort actually in force: the user's pick, but only when the current
@@ -539,6 +542,25 @@ export function ModelPicker({
               />
             </div>
           )}
+        </div>
+      )}
+
+      {/* The chosen model has been retired by its provider: every turn fails
+          with the provider's own error, and it is absent from the list above,
+          which alone would just look like it vanished. */}
+      {currentRetired && (
+        <div className="shrink-0 border-t border-faint px-3 py-2">
+          <span className="flex items-start gap-1.5">
+            <TriangleAlert size={12} className="mt-0.5 shrink-0 text-warn" />
+            <span className="text-xs">
+              <span className="block font-medium text-text">
+                {t("composer.model.retiredTitle")}
+              </span>
+              <span className="mt-0.5 block text-muted">
+                {t("composer.model.retiredBody", { model: current?.modelName ?? model })}
+              </span>
+            </span>
+          </span>
         </div>
       )}
 

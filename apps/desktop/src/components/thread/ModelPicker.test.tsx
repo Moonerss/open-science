@@ -143,4 +143,53 @@ describe("ModelPicker", () => {
       within(screen.getByRole("dialog")).queryByText(/context window unknown/i),
     ).toBeNull();
   });
+
+  // A provider can stop serving a model it still advertises (OpenCode Zen has
+  // retired 19 of its 25 free ones). Offering it would only produce a provider
+  // error mid-turn — but going silent would leave the user's own configured
+  // model missing from the list with no explanation.
+  describe("a model the provider has retired", () => {
+    beforeEach(() => {
+      useRuntimeStore.setState({
+        providers: [
+          {
+            id: "opencode",
+            name: "OpenCode Zen",
+            models: [
+              { id: "hy3-free", name: "HY3 (free)", contextLimit: 262144, available: true },
+              { id: "ling-3.0-flash-free", name: "Ling 3.0 Flash (free)", contextLimit: 262144, available: false },
+            ],
+          },
+        ],
+        defaultModel: "opencode/ling-3.0-flash-free",
+      });
+    });
+
+    it("is not offered in the list", async () => {
+      const user = userEvent.setup();
+      renderPicker();
+      await user.click(chip());
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("HY3 (free)")).toBeInTheDocument();
+      expect(within(dialog).queryByText("Ling 3.0 Flash (free)")).toBeNull();
+    });
+
+    it("is named on the chip and explained, while it is still the one configured", async () => {
+      const user = userEvent.setup();
+      renderPicker();
+      expect(chip()).toHaveTextContent("Ling 3.0 Flash (free)");
+      await user.click(chip());
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText(/retired by its provider/i)).toBeInTheDocument();
+      expect(within(dialog).getByText(/Ling 3.0 Flash \(free\)/)).toBeInTheDocument();
+    });
+
+    it("says nothing once a served model is chosen", async () => {
+      useRuntimeStore.setState({ defaultModel: "opencode/hy3-free" });
+      const user = userEvent.setup();
+      renderPicker();
+      await user.click(chip());
+      expect(within(screen.getByRole("dialog")).queryByText(/retired by its provider/i)).toBeNull();
+    });
+  });
 });

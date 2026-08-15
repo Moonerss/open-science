@@ -119,7 +119,9 @@
       "followAgent": "Follow the {{agent}} agent",
       "useDefault": "Use the global default",
       "unknownContextTitle": "Context window unknown",
-      "unknownContextBody": "Auto-compaction stays off for this model, so the conversation grows without limit and long turns eventually stall. Set the window in Settings → Models."
+      "unknownContextBody": "Auto-compaction stays off for this model, so the conversation grows without limit and long turns eventually stall. Set the window in Settings → Models.",
+      "retiredTitle": "Model retired by its provider",
+      "retiredBody": "{{model}} is still configured, but the provider no longer serves it, so every turn fails. Pick another model above."
     },
     "reference": {
       "filesAria": "Workspace files",

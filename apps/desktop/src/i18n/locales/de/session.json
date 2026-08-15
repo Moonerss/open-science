@@ -119,7 +119,9 @@
       "followAgent": "Dem Agenten {{agent}} folgen",
       "useDefault": "Globale Vorgabe verwenden",
       "unknownContextTitle": "Kontextfenster unbekannt",
-      "unknownContextBody": "Die automatische Komprimierung bleibt für dieses Modell aus, das Gespräch wächst unbegrenzt und lange Durchläufe bleiben irgendwann hängen. Fenstergröße unter Einstellungen → Modelle setzen."
+      "unknownContextBody": "Die automatische Komprimierung bleibt für dieses Modell aus, das Gespräch wächst unbegrenzt und lange Durchläufe bleiben irgendwann hängen. Fenstergröße unter Einstellungen → Modelle setzen.",
+      "retiredTitle": "Modell vom Anbieter eingestellt",
+      "retiredBody": "{{model}} ist weiterhin konfiguriert, wird vom Anbieter aber nicht mehr bereitgestellt, daher schlägt jeder Durchlauf fehl. Oben ein anderes Modell wählen."
     },
     "reference": {
       "filesAria": "Dateien im Arbeitsbereich",
