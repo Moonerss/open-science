@@ -42,10 +42,13 @@ Required support:
 | macOS Apple Silicon | `.dmg` / `.app` | P0 |
 | macOS Intel | `.dmg` / `.app` | P1 |
 | Windows x64 | `.exe` NSIS installer | P0 |
+| Windows x64 | `.msi` installer (IT-managed deployment) | P1 |
 
-Tauri can package `dmg`, `app`, `nsis`, and `msi` targets. Windows ships NSIS
-only: it is the sole Windows target supporting per-user install, and shipping
-`.msi` alongside it registered one app twice and broke upgrades (issue #113).
+Tauri can package `dmg`, `app`, `nsis`, and `msi` targets. Windows ships both:
+NSIS is the default download and the only target supporting per-user install,
+while the MSI serves Group Policy / Intune deployment and has taken 6-10% of
+Windows downloads every release. They are labelled by audience rather than
+offered as equals — installing one over the other registers the app twice.
 
 ### 2.2 Differentiation
 

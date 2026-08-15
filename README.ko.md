@@ -154,7 +154,7 @@ Formerly Open Science. Claude Science 및 유사한 AI-for-science 워크벤치�
 [Releases](https://github.com/ai4s-research/open-science/releases/latest)에서 최신 설치 파일을 받으세요.
 
 - **macOS**: `.dmg` / `.app`, Apple Silicon 및 Intel, macOS 13 Ventura 이상.
-- **Windows**: NSIS `.exe`, Windows 10/11 x64. 사용자별로 설치되며 관리자 권한이 필요 없습니다.
+- **Windows**: NSIS `.exe`, Windows 10/11 x64 — 사용자별로 설치되며 관리자 권한이 필요 없습니다. IT 일괄 배포용 `.msi`도 함께 제공하며, 두 형식을 섞어 설치하지 마세요.
 - **Linux**: x86_64용 `.deb` 및 `.rpm`.
 
 macOS 패키지는 Developer ID 서명·공증·스테이플이 완료되어 그대로 열립니다. `xattr` 우회는 필요하지 않습니다. Windows와 Linux 빌드는 아직 서명되지 않았습니다.

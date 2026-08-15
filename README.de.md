@@ -154,7 +154,7 @@ Ein-Klick-MCP-Konnektoren: Literatursuche, biomedizinische Datenbanken, Material
 Lade den neuesten Installer von [Releases](https://github.com/ai4s-research/open-science/releases/latest).
 
 - **macOS**: `.dmg` / `.app`, Apple Silicon und Intel, macOS 13 Ventura oder neuer.
-- **Windows**: NSIS `.exe`, Windows 10/11 x64. Installation pro Benutzer, ohne Administratorrechte.
+- **Windows**: NSIS `.exe`, Windows 10/11 x64 — Installation pro Benutzer, ohne Administratorrechte. Zusätzlich erscheint eine `.msi` für IT-verwaltete Verteilung; bleiben Sie bei einem Format.
 - **Linux**: `.deb` und `.rpm` für x86_64.
 
 Die macOS-Pakete sind Developer-ID-signiert, notarisiert und gestapelt und öffnen sich normal — kein `xattr`-Workaround nötig. Windows- und Linux-Builds sind noch nicht signiert.

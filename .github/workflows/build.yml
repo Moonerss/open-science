@@ -1,6 +1,6 @@
 name: build
 
-# Builds macOS (.dmg/.app), Windows (NSIS .exe) and Linux
+# Builds macOS (.dmg/.app), Windows (NSIS .exe + WiX .msi) and Linux
 # (.deb/.rpm) installers. Each platform's installer can only be
 # produced on its own runner — hence the matrix. On a `v*` tag push the
 # installers are also attached to a draft GitHub Release.
@@ -153,15 +153,17 @@ jobs:
           # Linux: deb+rpm only. AppImage is off because linuxdeploy runs ldd
           # on every bundled ELF and ldd exits 1 on the Bun-built opencode
           # sidecar, aborting the whole bundle (tauri-apps/tauri#8929).
-          # Windows: NSIS only. Shipping the WiX .msi alongside it gave one app
-          # two independent install/uninstall registrations, and an .msi install
-          # sends the NSIS installer down its fragile WiX-migration path
-          # (issue #113). NSIS is also the only Windows target that supports the
-          # per-user install this app uses.
+          # Windows ships BOTH: the NSIS .exe is the default download
+          # (per-user, no admin), and the WiX .msi exists for IT-managed
+          # deployment, which is what Group Policy and Intune consume — 6-10%
+          # of Windows downloads have taken it every release. They must not be
+          # presented as interchangeable: installing one over the other leaves
+          # the app registered twice, which is the mess issue #113 sits next
+          # to. The release notes label them by audience.
           # macOS submits the signed app without blocking inside Tauri. The
           # following steps preserve that exact app, wait with a bounded retry
           # loop, staple it, and create the final DMG.
-          args: --target ${{ matrix.target }} ${{ startsWith(matrix.platform, 'macos') && env.MACOS_SIGNING_ENABLED == 'true' && '--bundles app --skip-stapling' || startsWith(matrix.platform, 'macos') && '--bundles dmg' || startsWith(matrix.platform, 'ubuntu') && '--bundles deb,rpm' || '--bundles nsis' }}
+          args: --target ${{ matrix.target }} ${{ startsWith(matrix.platform, 'macos') && env.MACOS_SIGNING_ENABLED == 'true' && '--bundles app --skip-stapling' || startsWith(matrix.platform, 'macos') && '--bundles dmg' || startsWith(matrix.platform, 'ubuntu') && '--bundles deb,rpm' || '--bundles nsis,msi' }}
           # On a v* tag push, attach installers to a draft GitHub Release.
           # Empty tagName (workflow_dispatch) skips release creation.
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
@@ -177,9 +179,11 @@ jobs:
             - Developer ID-signed and notarized. Open the DMG and drag **Open Science** into Applications.
             - When you use an existing project in place, allow access to its folder if macOS asks.
 
-            **Windows** — `…_x64-setup.exe`
+            **Windows** — `…_x64-setup.exe` (start here) · `…_x64_en-US.msi` (IT-managed deployment only)
             - SmartScreen shows *"Windows protected your PC"* → **More info** → **Run anyway**.
-            - Upgrading: the setup installs over the previous version, so *"Do not uninstall"* is the safe choice. If you do uninstall first, leave **"Delete application data"** unchecked — it erases `%APPDATA%\com.ai4s.workbench`, which holds every session and run.
+            - Upgrading: choose **"Install over it, keeping my data"**. Removing the old version first is only for repairing a failed upgrade.
+            - Uninstalling: leave **"Also delete my sessions, run history and settings"** unchecked unless you mean it — it erases `%APPDATA%\com.ai4s.workbench`.
+            - Pick one format and stay on it. Installing the `.exe` over an `.msi` install (or the reverse) registers the app twice; uninstall the old one from **Settings → Apps** first.
 
             **Linux** — `.deb` / `.rpm`
             - `sudo apt install ./…_amd64.deb`  or  `sudo rpm -i …x86_64.rpm`
@@ -261,6 +265,7 @@ jobs:
           path: |
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
+            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.rpm
           if-no-files-found: warn

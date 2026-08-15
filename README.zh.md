@@ -184,7 +184,7 @@
 从 [Releases 页面](https://github.com/ai4s-research/open-science/releases/latest) 下载最新安装包。
 
 - **macOS**：`.dmg` / `.app`，Apple Silicon 和 Intel，要求 macOS 13 Ventura 或更高。
-- **Windows**：NSIS `.exe`，Windows 10/11 x64。按用户安装，无需管理员权限。
+- **Windows**：NSIS `.exe`，Windows 10/11 x64 —— 按用户安装，无需管理员权限。另发 `.msi` 供机构批量部署；两种格式请择一使用，不要混装。
 - **Linux**：x86_64 Linux 的 `.deb` 和 `.rpm`。
 
 macOS 安装包已使用 Developer ID 签名、公证并 staple，可直接打开，无需 `xattr` 之类的绕过操作。Windows 与 Linux 构建尚未签名。
