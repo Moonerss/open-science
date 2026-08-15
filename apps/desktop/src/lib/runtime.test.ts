@@ -252,6 +252,20 @@ describe("foldEvent", () => {
     ]);
     expect(s.blocks.filter((b) => b.kind === "status-line" && b.tone === "done")).toHaveLength(1);
   });
+
+  it("does not call a failed turn done", () => {
+    // The store appends the red line outside this reducer (the error handler),
+    // then the server's trailing session.idle arrives — which used to add a
+    // cheerful "done" underneath, so a request that never ran read as having
+    // succeeded (#114). Seed the failed state the same way the store leaves it.
+    const failed: FoldState = {
+      blocks: [{ kind: "status-line", text: "Invalid prompt", tone: "error" }],
+      index: {},
+    };
+    const s = foldAll([{ type: "session.idle", sessionId: S }], failed);
+    expect(s.blocks.some((b) => b.kind === "status-line" && b.tone === "done")).toBe(false);
+    expect(s.blocks).toHaveLength(1);
+  });
 });
 
 describe("subagent activity", () => {
@@ -565,6 +579,16 @@ describe("runtime error explanations", () => {
     expect(out).toMatch(/content filter/i);
     expect(out).toMatch(/every retry resends the same history/i);
     expect(out).toMatch(/new session|another model/i);
+  });
+
+  it("explains why a malformed session history cannot be retried", () => {
+    const out = explainRuntimeError(
+      "Invalid prompt: The messages do not match the ModelMessage[] schema.",
+    );
+    expect(out).toContain("ModelMessage[] schema"); // the SDK's own words survive
+    expect(out).toMatch(/tool call left without/i);
+    expect(out).toMatch(/every retry resends/i);
+    expect(out).toMatch(/new session/i);
   });
 
   it("keeps the dangling-model hint and passes anything else through", () => {

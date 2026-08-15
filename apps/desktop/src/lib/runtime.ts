@@ -783,6 +783,18 @@ export function explainRuntimeError(message: string): string {
       `start a new session, or switch to another model or provider.`
     );
   }
+  // The AI SDK rejects the whole request when the conversation it was handed is
+  // not a well-formed message list — in practice a tool call left without its
+  // result, or messages out of chronological order, which compaction on a long
+  // session can leave behind (#114). Like the content-filter case above, the
+  // bad history is resent every turn, so retrying reproduces it exactly.
+  if (/do(es)? not match the ModelMessage\[\] schema/i.test(message)) {
+    return (
+      `${message} The stored history of this session is malformed — usually a tool call left without ` +
+      `its result — and every retry resends it, so this session will keep failing. Edit or delete the ` +
+      `last few messages to cut the damaged part out, or start a new session.`
+    );
+  }
   return message;
 }
 
@@ -3660,7 +3672,12 @@ export function foldEvent(
     }
     case "session.idle": {
       const last = blocks[blocks.length - 1];
-      if (last?.kind === "status-line" && last.tone === "done") {
+      // A turn that already ended in a red line must not then be told it is
+      // "done": the server emits session.idle after a failed turn too, so the
+      // error and a cheerful "done" appeared one under the other and a request
+      // that never ran read as a completed one (#114). Covers "Interrupted"
+      // from the Stop path for the same reason.
+      if (last?.kind === "status-line" && (last.tone === "done" || last.tone === "error")) {
         return { blocks, index };
       }
       blocks.push({ kind: "status-line", text: "done", tone: "done" });
