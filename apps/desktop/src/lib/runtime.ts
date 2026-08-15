@@ -2673,6 +2673,21 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         return true;
       }
       lastError = get().error ?? lastError;
+      // The sidecar can die under us (it has crashed on its own — an Effect
+      // ServeError, exit 1). Retrying the socket alone then never recovers,
+      // because there is nothing listening and nothing puts it back: this
+      // loop used to hammer a dead port every second until the user restarted
+      // the whole app. startRuntime is the repair — it returns the existing
+      // URL when the runtime is alive, and respawns it when it is not, so the
+      // call is cheap on the common path and the fix on the broken one.
+      if (isTauri && !isGatewayWeb) {
+        try {
+          const url = await startRuntime();
+          if (url && url !== get().serverUrl) set({ serverUrl: url });
+        } catch (err) {
+          lastError = err instanceof Error ? err.message : String(err);
+        }
+      }
       set({ status: "connecting", error: null });
       // Quick retries first — the server is usually up within a second (a
       // reconnect finds it already listening); back off to 1 s for the long

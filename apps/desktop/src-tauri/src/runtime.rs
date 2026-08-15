@@ -15,6 +15,11 @@ struct RuntimeLifecycle {
     child: Option<CommandChild>,
     url: Option<String>,
     port: Option<u16>,
+    /// Bumped on every spawn. The exit watcher captures the value its own
+    /// sidecar was spawned with and only clears the lifecycle while it still
+    /// matches, so a late exit from an already-replaced sidecar cannot wipe
+    /// the live one.
+    generation: u64,
 }
 
 /// One lock owns every sidecar lifecycle field. Keeping child/url/port in
@@ -1066,7 +1071,7 @@ fn system_proxy_url() -> Option<String> {
     None
 }
 
-fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
+fn spawn_sidecar(app: &AppHandle, port: u16, generation: u64) -> Result<CommandChild, String> {
     let root = runtime_root(app)?;
     let cfg = root.join("xdg-config");
     let data = root.join("xdg-data");
@@ -1257,6 +1262,22 @@ fn spawn_sidecar(app: &AppHandle, port: u16) -> Result<CommandChild, String> {
                         &app,
                         &format!("[opencode] terminated: code={:?} signal={:?}", status.code, status.signal),
                     );
+                    // Forget the dead sidecar. Without this the handle and URL
+                    // stayed behind, `start_runtime`'s "already running" early
+                    // return handed the frontend the URL of a process that no
+                    // longer existed, and the app retried that dead port
+                    // forever — a crash the runtime could have recovered from
+                    // in seconds instead needed the whole app restarted.
+                    // The port is kept: it is free again, and reusing it means
+                    // the frontend's URL survives the respawn.
+                    if let Some(state) = app.try_state::<RuntimeState>() {
+                        if let Ok(mut lifecycle) = state.lifecycle.lock() {
+                            if lifecycle.generation == generation {
+                                lifecycle.child = None;
+                                lifecycle.url = None;
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -1281,7 +1302,8 @@ fn restart_sidecar_if_running(
     let _ = child.kill();
 
     let port = *lifecycle.port.get_or_insert_with(free_port);
-    let child = spawn_sidecar(app, port)?;
+    lifecycle.generation += 1;
+    let child = spawn_sidecar(app, port, lifecycle.generation)?;
     let url = format!("http://127.0.0.1:{port}");
     lifecycle.child = Some(child);
     lifecycle.url = Some(url.clone());
@@ -1306,7 +1328,8 @@ pub fn start_runtime(app: AppHandle, state: State<'_, RuntimeState>) -> Result<S
 
     // Reuse a stable port across restarts so the frontend URL doesn't change.
     let port = *lifecycle.port.get_or_insert_with(free_port);
-    let child = spawn_sidecar(&app, port)?;
+    lifecycle.generation += 1;
+    let child = spawn_sidecar(&app, port, lifecycle.generation)?;
     let url = format!("http://127.0.0.1:{port}");
     lifecycle.child = Some(child);
     lifecycle.url = Some(url.clone());

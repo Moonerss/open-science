@@ -373,6 +373,26 @@ describe("runtime authentication", () => {
     expect(mocks.startRuntime).toHaveBeenCalledTimes(1);
   });
 
+  it("respawns the sidecar when reconnecting to a dead one", async () => {
+    // The sidecar crashes on its own (Effect ServeError, exit 1). Retrying the
+    // socket alone never recovers — nothing is listening and nothing puts it
+    // back — so the app hammered a dead port until the user restarted it.
+    // Every failed attempt must go through startRuntime, which respawns a dead
+    // runtime and is a no-op for a live one.
+    mocks.startRuntime.mockClear();
+    const connect = vi
+      .spyOn(useRuntimeStore.getState(), "connect")
+      .mockImplementation(async () => {
+        useRuntimeStore.setState({ status: "error", error: "stream closed" });
+      });
+
+    const ok = await useRuntimeStore.getState().connectRetry(3);
+
+    expect(ok).toBe(false);
+    expect(mocks.startRuntime).toHaveBeenCalledTimes(3); // one per failed attempt
+    connect.mockRestore();
+  });
+
   it("connect() passes the per-run runtime password to the SDK client", async () => {
     // The sidecar requires Basic auth (OPENCODE_SERVER_PASSWORD); an
     // unauthenticated client would 401 on every call.
