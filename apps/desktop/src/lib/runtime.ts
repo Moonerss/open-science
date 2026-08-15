@@ -548,13 +548,44 @@ let streamPassword: string | undefined;
  *  and every background stream share one folding path. */
 let sharedEventHandler: ((event: OpenCodeEvent) => void) | null = null;
 function removeStreamClient(dir: string) {
+  cancelStreamRetirement(dir);
   const c = streamClients.get(dir);
   if (c) {
     c.close();
     streamClients.delete(dir);
   }
 }
+/**
+ * Folders whose stream is no longer tiled but is kept alive a little longer.
+ *
+ * Screen switching used to close every background stream and open the incoming
+ * screen's from scratch, so flipping between two screens paid a full SSE
+ * handshake each way — against a per-directory OpenCode instance that is
+ * initialized lazily, i.e. a cold start on the switch's critical path (#92).
+ * Retiring on a delay makes a switch back free, and costs one idle EventSource
+ * per recently-seen folder for the length of the grace period.
+ */
+const streamRetirements = new Map<string, ReturnType<typeof setTimeout>>();
+const STREAM_RETIREMENT_MS = 60_000;
+function cancelStreamRetirement(dir: string) {
+  const timer = streamRetirements.get(dir);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    streamRetirements.delete(dir);
+  }
+}
+function retireStreamClient(dir: string) {
+  if (streamRetirements.has(dir) || !streamClients.has(dir)) return;
+  streamRetirements.set(
+    dir,
+    setTimeout(() => {
+      streamRetirements.delete(dir);
+      removeStreamClient(dir);
+    }, STREAM_RETIREMENT_MS),
+  );
+}
 function teardownStreamClients() {
+  for (const dir of [...streamRetirements.keys()]) cancelStreamRetirement(dir);
   for (const c of streamClients.values()) c.close();
   streamClients.clear();
 }
@@ -3543,9 +3574,18 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     const foreground = get().workspace;
     const wanted = new Set(directories.filter((d): d is string => !!d && d !== foreground));
     for (const dir of [...streamClients.keys()]) {
-      if (!wanted.has(dir)) removeStreamClient(dir);
+      // The FOREGROUND folder's stream still closes at once — the foreground
+      // client covers it, and two live streams would fold every event twice.
+      // Anything else only leaves the tiled set, which a screen switch does to
+      // a whole screen's worth of folders at a time; give those a grace period.
+      if (!wanted.has(dir)) {
+        if (dir === foreground) removeStreamClient(dir);
+        else retireStreamClient(dir);
+      }
     }
     for (const dir of wanted) {
+      // Back before its retirement fired: keep the stream, cancel the timer.
+      cancelStreamRetirement(dir);
       if (streamClients.has(dir)) continue;
       const c = new OpenCodeClient({
         baseUrl: streamBaseUrl,

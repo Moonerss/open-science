@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Options as ReactMarkdownOptions } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -80,6 +80,23 @@ function normalizeMathDelimiters(markdown: string): string {
   );
 }
 
+// Math costs two extra passes over every node of every message — remark-math on
+// the mdast, rehype-katex on the hast — and almost no message contains any. The
+// parse is the main cost of mounting a conversation, and a screen switch mounts
+// every message of every pane at once (#92), so the plugins are attached only
+// when a dollar delimiter survived normalization. A `$` that turns out to be
+// prose (a price) merely puts us back on the old path for that one message.
+type Plugins = Pick<ReactMarkdownOptions, "remarkPlugins" | "rehypePlugins">;
+const MATH_PLUGINS: Plugins = {
+  remarkPlugins: [remarkGfm, remarkMath],
+  rehypePlugins: [[rehypeKatex, { throwOnError: false }]],
+};
+const PLAIN_PLUGINS: Plugins = { remarkPlugins: [remarkGfm], rehypePlugins: [] };
+
+function pluginsFor(markdown: string): Plugins {
+  return markdown.includes("$") ? MATH_PLUGINS : PLAIN_PLUGINS;
+}
+
 export function MarkdownViewer({
   children,
   className,
@@ -91,15 +108,16 @@ export function MarkdownViewer({
 }) {
   const s = STYLES[variant];
   const normalized = useMemo(() => normalizeMathDelimiters(children), [children]);
+  const plugins = useMemo(() => pluginsFor(normalized), [normalized]);
   return (
     <div className={cn(s.root, className)}>
+      {/* Math (KaTeX) — $…$/$$…$$ natively, \(…\)/\[…\] via the normalization
+          above. `throwOnError: false` keeps a malformed expression from
+          blanking the whole message — it shows the source in red instead. Both
+          math plugins are dropped for a message with no dollar delimiter at
+          all; see pluginsFor. */}
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        // Render math (KaTeX) — $…$/$$…$$ natively, \(…\)/\[…\] via the
-        // normalization above. `throwOnError: false` keeps a malformed
-        // expression from blanking the whole message — it shows the source
-        // in red instead.
-        rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
+        {...plugins}
         components={{
           p: ({ children }) => <p className={s.p}>{children}</p>,
           a: ({ children, href }) => (

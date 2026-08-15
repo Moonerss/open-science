@@ -83,6 +83,7 @@ const mocks = vi.hoisted(() => ({
   adoptWorkspaceSkills: vi.fn(async (_known: string[]) => ["agent-skill"]),
   /** Constructor options every OpenCodeClient was created with. */
   clientOpts: [] as Record<string, unknown>[],
+  closedDirs: [] as string[],
 }));
 
 vi.mock("./tauri", () => ({
@@ -113,7 +114,9 @@ vi.mock("@ai4s/sdk", () => {
     /** The real client keeps its status (BaseAgentRuntime); the store reads it
      *  after connecting rather than waiting for a transition. */
     private status = "offline";
+    private opts: Record<string, unknown>;
     constructor(opts: Record<string, unknown>) {
+      this.opts = opts;
       mocks.clientOpts.push(opts);
     }
     getStatus() {
@@ -266,6 +269,8 @@ vi.mock("@ai4s/sdk", () => {
     // The real client emits "offline" on teardown — the store must keep that
     // away from the UI while reconnecting (first-boot flicker regression).
     close() {
+      const dir = this.opts.directory;
+      if (typeof dir === "string") mocks.closedDirs.push(dir);
       this.statusCb("offline");
     }
   }
@@ -302,6 +307,7 @@ beforeEach(async () => {
   mocks.reviewSessionCounter = 0;
   mocks.notifyPermissionRequest.mockResolvedValue(true);
   mocks.createSessionSpy.mockClear();
+  mocks.closedDirs.length = 0;
   useRuntimeStore.setState({
     currentId: null,
     draftWorkspaces: {},
@@ -2595,5 +2601,57 @@ describe("per-agent model precedence", () => {
     useRuntimeStore.setState({ agents: [] });
     await useRuntimeStore.getState().sendPrompt("hi");
     expect(lastSend()[3]).toBe("openai/gpt-5");
+  });
+});
+
+// Switching Screens changes the whole set of tiled folders at once. Closing
+// each departing stream on the spot meant a flip between two Screens paid a
+// fresh SSE handshake every time — against a per-directory OpenCode instance
+// that starts lazily, i.e. a cold start on the switch's critical path (#92).
+describe("background pane streams", () => {
+  const dirsBuilt = () =>
+    mocks.clientOpts.map((o) => o.directory).filter((d): d is string => typeof d === "string");
+
+  beforeEach(() => {
+    useRuntimeStore.setState({ workspace: "/ws/foreground" });
+    mocks.clientOpts.length = 0;
+  });
+
+  it("survives a Screen switch away and back without reconnecting", () => {
+    const sync = useRuntimeStore.getState().syncPaneStreams;
+    sync(["/ws/a"]);
+    expect(dirsBuilt()).toEqual(["/ws/a"]);
+
+    // Switch to a Screen that shows neither folder…
+    sync([]);
+    expect(mocks.closedDirs).not.toContain("/ws/a");
+
+    // …and back: the same stream is still there, so nothing is rebuilt.
+    sync(["/ws/a"]);
+    expect(dirsBuilt()).toEqual(["/ws/a"]);
+    expect(mocks.closedDirs).not.toContain("/ws/a");
+  });
+
+  it("retires a stream that stays gone", () => {
+    vi.useFakeTimers();
+    try {
+      const sync = useRuntimeStore.getState().syncPaneStreams;
+      sync(["/ws/a"]);
+      sync([]);
+      vi.advanceTimersByTime(60_000);
+      expect(mocks.closedDirs).toContain("/ws/a");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Two live streams on one folder fold every event twice, so the foreground's
+  // own folder is still dropped the moment it is adopted — no grace period.
+  it("drops the foreground folder's background stream at once", () => {
+    const sync = useRuntimeStore.getState().syncPaneStreams;
+    sync(["/ws/a"]);
+    useRuntimeStore.setState({ workspace: "/ws/a" });
+    sync(["/ws/a"]);
+    expect(mocks.closedDirs).toContain("/ws/a");
   });
 });
