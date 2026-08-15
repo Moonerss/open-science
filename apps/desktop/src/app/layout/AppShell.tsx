@@ -9,7 +9,7 @@ import { PaneDragGhost } from "@/components/session/PaneDragGhost";
 import { Toaster } from "@/components/ui/Toaster";
 import { SshSignInDialog } from "@/components/ui/SshSignInDialog";
 import { mockProject } from "@/lib/mock";
-import { useRuntimeStore } from "@/lib/runtime";
+import { draftKeyFor, inheritedDraftFolder, useRuntimeStore } from "@/lib/runtime";
 import { ensureSetupProgressListener } from "@/lib/setup";
 import { useOverlayTitlebar, useUiStore } from "@/lib/store";
 import { overlayTitlebarStyle } from "@/lib/titlebar";
@@ -19,7 +19,7 @@ import { useUpdateStore } from "@/lib/update";
 import { isGatewayWeb, gatewayToken, setUnauthorizedHandler } from "@/lib/webMode";
 import { WebTokenGate } from "@/components/web/WebTokenGate";
 import { useIsMobile } from "@/lib/useIsMobile";
-import { leaves, useLayoutStore, type SplitDir } from "@/lib/layout";
+import { findLeaf, leaves, useLayoutStore, type SplitDir } from "@/lib/layout";
 import { useNativeContextMenuGuard } from "@/lib/nativeMenu";
 
 export function AppShell() {
@@ -57,8 +57,23 @@ export function AppShell() {
     const doSplit = (dir: SplitDir) => {
       const layout = useLayoutStore.getState();
       // Empty group → the new draft fills it; otherwise split the focused pane.
-      if (!layout.tree) layout.dockSession("", dir === "row" ? "right" : "bottom", null);
-      else layout.split(dir, null);
+      if (!layout.tree) {
+        layout.dockSession("", dir === "row" ? "right" : "bottom", null);
+        return;
+      }
+      // The pane being split from, read BEFORE the split moves the focus.
+      const source = layout.focusedLeafId ? findLeaf(layout.tree, layout.focusedLeafId) : null;
+      const leafId = layout.split(dir, null);
+      // A split continues the work in front of you, so the new pane starts in
+      // the same folder — the pane offers "new folder" as one click while it is
+      // still empty. Nothing is created until its first message either way.
+      if (!leafId) return;
+      const runtime = useRuntimeStore.getState();
+      const folder = inheritedDraftFolder(
+        source ? { leafId: source.id, sessionId: source.sessionId } : null,
+        runtime,
+      );
+      if (folder) runtime.openDraftFrom(draftKeyFor(leafId), folder);
     };
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;

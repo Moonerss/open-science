@@ -362,6 +362,18 @@ describe("layout store — groups", () => {
     expect(S().groups[0].tree).toBeNull();
   });
 
+  // The caller needs the id to aim the new pane's own `draft:<leafId>` folder
+  // slot; there is no other handle on a pane that was just created.
+  it("split returns the new leaf id, and null when there is nothing to split", () => {
+    const id = S().split("row", null);
+    expect(id).toBe(S().focusedLeafId);
+    expect(leaves(S().tree!).map((l) => l.id)).toContain(id);
+
+    S().closePane(S().focusedLeafId!);
+    S().closePane(S().focusedLeafId!); // empty group — no focused leaf left
+    expect(S().split("row", null)).toBeNull();
+  });
+
   it("split then close re-equalizes and stays within the active group", () => {
     S().split("row", "B"); // A | B
     expect(leaves(S().tree!).map((l) => l.sessionId)).toEqual(["A", "B"]);

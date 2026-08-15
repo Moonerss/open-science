@@ -35,6 +35,7 @@ import { Composer } from "@/components/thread/Composer";
 import { GOAL_RESUME_NUDGE, GoalPill } from "@/components/thread/GoalPill";
 import { baseName } from "@/components/thread/WorkspaceChip";
 import { WorkflowStarters } from "@/components/thread/WorkflowStarters";
+import { DraftDestination } from "@/components/session/DraftDestination";
 import { InteractionPrompt } from "@/components/thread/InteractionPrompt";
 import { InspectorShell } from "@/components/inspector/InspectorShell";
 import { MaximizePaneButton, RightPane } from "@/components/inspector/RightPane";
@@ -660,7 +661,10 @@ export function SessionView({
               </div>
             )}
             {connected && isEmpty && !eid && !webReadOnly && (
-              <WorkflowStarters onPick={(p) => void onSend(p)} />
+              <>
+                <DraftDestination draftKey={draftKey} />
+                <WorkflowStarters onPick={(p) => void onSend(p)} />
+              </>
             )}
             {historyLoading && <ThreadSkeleton />}
             {!historyLoading && thread && (

@@ -414,8 +414,11 @@ interface LayoutState {
   renameGroup: (groupId: string, name: string) => void;
   setActiveGroup: (groupId: string) => void;
   /** Split the focused leaf toward `dir` (row → new pane on the right, col →
-   *  below), binding `sessionId` to it (or a draft when null) and focusing it. */
-  split: (dir: SplitDir, sessionId: string | null) => void;
+   *  below), binding `sessionId` to it (or a draft when null) and focusing it.
+   *  Returns the new leaf's id — a draft pane's caller needs it to aim the
+   *  pane's own `draft:<leafId>` slot at a folder — or null when there was no
+   *  focused leaf to split. */
+  split: (dir: SplitDir, sessionId: string | null) => string | null;
   /** Dock a NEW pane (bound to `sessionId`, or a draft when null) against
    *  `targetLeafId` on `edge`; focuses it. The drag-to-dock entry for a session
    *  coming from the sidebar. */
@@ -604,11 +607,12 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
 
     split: (dir, sessionId) => {
       const { tree, focusedLeafId } = get();
-      if (!tree || !focusedLeafId) return;
+      if (!tree || !focusedLeafId) return null;
       get().pinEphemeral();
       const leaf = makeLeaf(sessionId);
       const edge: DockEdge = dir === "row" ? "right" : "bottom";
       commitActive({ tree: insertLeaf(tree, focusedLeafId, edge, leaf), focusedLeafId: leaf.id, zoomedLeafId: null });
+      return leaf.id;
     },
     dockSession: (targetLeafId, edge, sessionId) => {
       get().pinEphemeral();

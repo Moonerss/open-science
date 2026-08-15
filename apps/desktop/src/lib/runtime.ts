@@ -318,6 +318,21 @@ interface RuntimeState {
    *  neither survived a glance at another session (the send landed in that
    *  session's folder) nor stayed out of the way of an unrelated new screen. */
   draftWorkspaces: Record<string, string>;
+  /** The folder a draft pane was BORN from (the pane it was split off), keyed
+   *  the same way. Separate from the aim above because the two answer different
+   *  questions: the aim is where the session will land and is cleared the moment
+   *  the user picks "new folder", while this is what the pane offers to go back
+   *  to — losing it on the first toggle would make the choice one-way. */
+  draftOrigins: Record<string, string>;
+  /** Open a draft slot for a pane split off `folder`: records the origin AND
+   *  aims there, so the new pane continues the work in front of the user. */
+  openDraftFrom: (key: string, folder: string) => void;
+  /** Point a draft slot at `path` — or, with null, back at a fresh dated folder.
+   *  Pure state: unlike `switchWorkspace` it does NOT move the active folder,
+   *  because a new pane must not drag the pane the user is still reading into a
+   *  different workspace. The send path does the moving, once, if the draft is
+   *  still aimed when its first message goes out. */
+  aimDraft: (key: string, path: string | null) => void;
   /** A deliberate workspace move is in flight (event-stream reconnect into the
    *  new folder). The UI must not present it as a disconnection — no status
    *  flip, no Connect button, no help card. Real failures surface after the
@@ -561,13 +576,19 @@ function clientForSession(get: StoreGet, sid: string): AgentRuntime | null {
 }
 const emptyThread = (): Thread => ({ blocks: [], index: {}, loaded: false });
 
-/** Forget a draft's chosen folder — its session was created, or the user asked
- *  for a plain New. Absent means "give the next session a fresh dated folder". */
+/** Retire a draft slot's folder state entirely — its session was created, or the
+ *  user asked for a plain New. Absent means "give the next session a fresh dated
+ *  folder". Drops the origin too: the slot is done, and a stale origin would
+ *  offer a later draft on the same leaf a folder it never came from. */
 function forgetDraftFolder(s: RuntimeState, key: string) {
-  if (!(key in s.draftWorkspaces)) return {};
+  const hadAim = key in s.draftWorkspaces;
+  const hadOrigin = key in s.draftOrigins;
+  if (!hadAim && !hadOrigin) return {};
   const draftWorkspaces = { ...s.draftWorkspaces };
   delete draftWorkspaces[key];
-  return { draftWorkspaces };
+  const draftOrigins = { ...s.draftOrigins };
+  delete draftOrigins[key];
+  return { draftWorkspaces, draftOrigins };
 }
 
 /** Drop the global draft slot's leftovers: an aborted first message, its pane
@@ -645,6 +666,29 @@ export const DRAFT_KEY = "draft";
  *  panes each hold an independent draft (thread/composer/model/agent) and each
  *  create their own session on first send — instead of sharing DRAFT_KEY. */
 export const draftKeyFor = (leafId: string): string => `draft:${leafId}`;
+
+/**
+ * Folder a pane split off `source` should start in: the folder that pane's own
+ * next message would land in. A bound pane contributes its session's folder; an
+ * unbound one contributes whatever it is itself aimed at, which is null when it
+ * would create a dated folder — so "new folder" propagates as faithfully as a
+ * real path does. Null means the new pane makes its own dated folder, which is
+ * also what an empty Screen (no source pane at all) gets.
+ *
+ * Deliberately NOT the active workspace: that follows whichever session was
+ * last opened, so it can name a folder the source pane has nothing to do with
+ * (#69). Only the pane being split from may decide this.
+ */
+export function inheritedDraftFolder(
+  source: { leafId: string; sessionId: string | null } | null,
+  state: Pick<RuntimeState, "sessions" | "draftWorkspaces">,
+): string | null {
+  if (!source) return null;
+  if (source.sessionId) {
+    return state.sessions.find((s) => s.id === source.sessionId)?.directory ?? null;
+  }
+  return state.draftWorkspaces[draftKeyFor(source.leafId)] ?? null;
+}
 
 /** The composer's agent switch: "build" edits and runs; "plan" is OpenCode's
  *  read-only planning agent (edits denied except its plan .md file). */
@@ -1059,7 +1103,8 @@ async function performTurn(
         // The destination has done its job: the session now carries its own
         // folder. Leaving the entry would silently aim this pane's NEXT draft
         // at the same project long after the user moved on.
-        const { draftWorkspaces = s.draftWorkspaces } = forgetDraftFolder(s, draftSrc);
+        const { draftWorkspaces = s.draftWorkspaces, draftOrigins = s.draftOrigins } =
+          forgetDraftFolder(s, draftSrc);
         // Move the in-flight send lock too, so a pane keyed on the new id (the
         // draft pane follows currentId onto the real session) still reads itself
         // as sending across the graft — no flicker to an unlocked composer.
@@ -1088,6 +1133,7 @@ async function performTurn(
           sessionModels,
           sessionVariants,
           draftWorkspaces,
+          draftOrigins,
         };
       });
       lockKey = id;
@@ -1714,6 +1760,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   workspace: null,
   webReadOnly: false,
   draftWorkspaces: {},
+  draftOrigins: {},
   switching: false,
   sending: false,
   sendingSessions: {},
@@ -2824,6 +2871,23 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
 
   // "New" opens a blank draft — no session is created until the first message (#3).
   // A fresh draft also drops any pinned folder: back to the dated-folder default.
+  openDraftFrom: (key, folder) =>
+    set((s) => ({
+      draftWorkspaces: { ...s.draftWorkspaces, [key]: folder },
+      draftOrigins: { ...s.draftOrigins, [key]: folder },
+    })),
+
+  // Clears the AIM only, never the origin — "new folder" has to be a choice the
+  // pane can take back.
+  aimDraft: (key, path) =>
+    set((s) => {
+      if (path) return { draftWorkspaces: { ...s.draftWorkspaces, [key]: path } };
+      if (!(key in s.draftWorkspaces)) return {};
+      const draftWorkspaces = { ...s.draftWorkspaces };
+      delete draftWorkspaces[key];
+      return { draftWorkspaces };
+    }),
+
   startDraft: () => set((s) => ({ ...blankDraft(s), ...forgetDraftFolder(s, DRAFT_KEY) })),
 
   // Re-blank the draft VIEW without touching where the next session will live.

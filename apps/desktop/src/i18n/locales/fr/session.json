@@ -386,5 +386,11 @@
     "empty": "Aucun sous-agent dans cette conversation pour l’instant.",
     "noDetail": "Aucune étape n'a été enregistrée pour ce sous-agent.",
     "loadingDetail": "Chargement…"
+  },
+  "draftDestination": {
+    "title": "La session de ce volet sera créée dans",
+    "continueIn": "Continuer dans {{name}}",
+    "newFolder": "Nouveau dossier",
+    "chooseOther": "Choisir un autre dossier…"
   }
 }

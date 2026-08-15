@@ -377,5 +377,11 @@
     "empty": "이 대화에는 아직 서브에이전트가 없습니다.",
     "noDetail": "이 서브에이전트의 단계가 기록되지 않았습니다.",
     "loadingDetail": "불러오는 중…"
+  },
+  "draftDestination": {
+    "title": "이 창의 세션이 생성될 위치",
+    "continueIn": "{{name}} 계속 사용",
+    "newFolder": "새 폴더",
+    "chooseOther": "다른 폴더 선택…"
   }
 }

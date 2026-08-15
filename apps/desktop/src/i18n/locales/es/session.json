@@ -386,5 +386,11 @@
     "empty": "Todavía no hay subagentes en esta conversación.",
     "noDetail": "No se registraron pasos para este subagente.",
     "loadingDetail": "Cargando…"
+  },
+  "draftDestination": {
+    "title": "La sesión de este panel se creará en",
+    "continueIn": "Continuar en {{name}}",
+    "newFolder": "Carpeta nueva",
+    "chooseOther": "Elegir otra carpeta…"
   }
 }

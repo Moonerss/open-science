@@ -500,9 +500,14 @@ describe("per-session workspace folders", () => {
   // after the user moved on — the same class of stale-global bug as #69 itself.
   it("forgets a draft's destination once its session exists", async () => {
     await useRuntimeStore.getState().startDraftInWorkspace("/ws/毕设", "draft:leaf-7");
+    // As if this pane had been split off one already in that folder.
+    useRuntimeStore.getState().openDraftFrom("draft:leaf-7", "/ws/毕设");
     await useRuntimeStore.getState().sendPrompt("hello", undefined, "draft:leaf-7");
 
     expect(useRuntimeStore.getState().draftWorkspaces["draft:leaf-7"]).toBeUndefined();
+    // The origin goes with it, or the pane's NEXT draft would offer to continue
+    // in a folder it never came from.
+    expect(useRuntimeStore.getState().draftOrigins["draft:leaf-7"]).toBeUndefined();
 
     // A later draft in that same pane goes back to the default.
     mocks.newDatedWorkspace.mockClear();
