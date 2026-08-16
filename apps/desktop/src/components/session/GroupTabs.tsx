@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pencil, Plus, X, PanelLeft } from "lucide-react";
-import { groupLabel, useLayoutStore } from "@/lib/layout";
+import { groupLabel, leaves, useLayoutStore, type LayoutGroup } from "@/lib/layout";
 import { useOverlayTitlebar, useUiStore } from "@/lib/store";
 import { overlayTitlebarStyle } from "@/lib/titlebar";
+import { beginScreenSwitch } from "@/lib/switchProbe";
+import { hasParkedDraft } from "@/lib/composerStash";
+import { draftKeyFor } from "@/lib/runtime";
 import { cn } from "@/lib/cn";
 import { ContextMenu, ContextMenuItem } from "@/components/ui/ContextMenu";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -14,6 +17,22 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
  * top-most element it owns the macOS overlay-titlebar clearance (traffic-light
  * inset + window-drag region), so no pane below needs to.
  */
+/**
+ * Does closing this Screen need a confirmation?
+ *
+ * Only when it would lose something the sidebar cannot give back: an unsent
+ * message, or a pane arrangement the user built. An empty Screen, a fresh draft
+ * nobody has typed into, or a session merely opened for a look — those close on
+ * the click, because closing them costs nothing (the session itself, and any
+ * turn running in it, live on outside the layout).
+ */
+function closeNeedsConfirm(group: LayoutGroup): boolean {
+  if (!group.tree) return false;
+  const panes = leaves(group.tree);
+  if (panes.length > 1) return true;
+  return panes.some((pane) => hasParkedDraft(draftKeyFor(pane.id)));
+}
+
 export function GroupTabs() {
   const { t } = useTranslation(["session", "nav"]);
   const groups = useLayoutStore((s) => s.groups);
@@ -32,6 +51,7 @@ export function GroupTabs() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmCloseId, setConfirmCloseId] = useState<string | null>(null);
   const fallback = (n: number) => t("group.defaultName", { n });
+
 
   return (
     <>
@@ -95,7 +115,10 @@ export function GroupTabs() {
               <div
                 // Dock-drag target: hovering this tab mid-drag switches screens (#4).
                 data-group-tab={g.id}
-                onClick={() => setActiveGroup(g.id)}
+                onClick={() => {
+                  beginScreenSwitch(); // timed to the glass — see lib/switchProbe
+                  setActiveGroup(g.id);
+                }}
                 onDoubleClick={() => setEditingId(g.id)}
                 className={cn(
                   "group/tab flex h-7 min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors",
@@ -122,7 +145,8 @@ export function GroupTabs() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setConfirmCloseId(g.id);
+                    if (closeNeedsConfirm(g)) setConfirmCloseId(g.id);
+                    else closeGroup(g.id);
                   }}
                   aria-label={t("group.close")}
                   className={cn(

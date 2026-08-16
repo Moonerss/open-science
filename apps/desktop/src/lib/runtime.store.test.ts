@@ -282,7 +282,7 @@ vi.mock("@ai4s/sdk", () => {
 });
 
 import type { ArtifactBlock } from "@ai4s/shared";
-import { DRAFT_KEY, rootSessionOf, useRuntimeStore } from "./runtime";
+import { DRAFT_KEY, adoptSourceFolder, rootSessionOf, useRuntimeStore } from "./runtime";
 import { useSshStore } from "./ssh";
 import { leaves, makeLeaf, useLayoutStore } from "./layout";
 
@@ -531,19 +531,37 @@ describe("per-session workspace folders", () => {
   // after the user moved on — the same class of stale-global bug as #69 itself.
   it("forgets a draft's destination once its session exists", async () => {
     await useRuntimeStore.getState().startDraftInWorkspace("/ws/毕设", "draft:leaf-7");
-    // As if this pane had been split off one already in that folder.
-    useRuntimeStore.getState().openDraftFrom("draft:leaf-7", "/ws/毕设");
     await useRuntimeStore.getState().sendPrompt("hello", undefined, "draft:leaf-7");
 
     expect(useRuntimeStore.getState().draftWorkspaces["draft:leaf-7"]).toBeUndefined();
-    // The origin goes with it, or the pane's NEXT draft would offer to continue
-    // in a folder it never came from.
-    expect(useRuntimeStore.getState().draftOrigins["draft:leaf-7"]).toBeUndefined();
 
     // A later draft in that same pane goes back to the default.
     mocks.newDatedWorkspace.mockClear();
     await useRuntimeStore.getState().sendPrompt("second", undefined, "draft:leaf-7");
     expect(mocks.newDatedWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  // Cmd+D splits without asking, so the new pane inherits the folder in front
+  // of the user. (The header's split buttons ask first — SplitMenu — and aim
+  // the pane at the answer.)
+  it("adoptSourceFolder aims a split pane at its source's folder", () => {
+    useRuntimeStore.setState({
+      sessions: [{ id: "ses_1", title: "t", directory: "/ws/毕设" } as never],
+    });
+
+    adoptSourceFolder("leaf-9", { leafId: "leaf-1", sessionId: "ses_1" });
+
+    expect(useRuntimeStore.getState().draftWorkspaces["draft:leaf-9"]).toBe("/ws/毕设");
+  });
+
+  it("adoptSourceFolder leaves a pane with nothing to continue alone", () => {
+    // No source (an empty Screen), and a source draft that was never aimed:
+    // both mean the new pane makes its own dated folder.
+    adoptSourceFolder("leaf-10", null);
+    adoptSourceFolder("leaf-11", { leafId: "leaf-2", sessionId: null });
+
+    expect(useRuntimeStore.getState().draftWorkspaces["draft:leaf-10"]).toBeUndefined();
+    expect(useRuntimeStore.getState().draftWorkspaces["draft:leaf-11"]).toBeUndefined();
   });
 
   it("restores the draft's folder when the active one wandered off", async () => {

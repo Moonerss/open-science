@@ -63,6 +63,9 @@ interface Row {
   title: string;
   to: string;
   kind: "session" | "example";
+  /** The project this session belongs to, if any. Names the Screen a click
+   *  opens — "Screen 3" says nothing about what is in it. */
+  project?: string;
 }
 
 /** Dragging the divider below this pointer x collapses the sidebar; dragging
@@ -289,8 +292,10 @@ export function Sidebar({ project }: { project: Project }) {
       kind: "session",
     };
     const owner = s.directory ? projectByPath.get(pathKey(s.directory)) : undefined;
-    if (owner) sessionsByProject.get(owner.id)!.push(row);
-    else looseRows.push(row);
+    if (owner) {
+      row.project = owner.name;
+      sessionsByProject.get(owner.id)!.push(row);
+    } else looseRows.push(row);
   }
   // Recency per project = its newest session's update time (else its creation).
   const updatedByProject = new Map<string, number>();
@@ -448,7 +453,7 @@ export function Sidebar({ project }: { project: Project }) {
               // eslint-disable-next-line i18next/no-literal-string -- SplitDir enum, not UI copy
               layout.split("row", row.id);
             } else {
-              layout.openSessionEphemeral(row.id);
+              layout.openSessionEphemeral(row.id, row.project);
             }
             // The layout change alone is invisible from Skills/Runs/Files/…:
             // those routes render instead of the panes, so the click looked

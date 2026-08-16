@@ -12,6 +12,21 @@ vi.mock("./SessionView", () => ({
   ),
 }));
 
+/** What LiveSessionPage renders: every screen mounted, the active one shown. */
+function Screens() {
+  const groups = useLayoutStore((s) => s.groups);
+  const activeGroupId = useLayoutStore((s) => s.activeGroupId);
+  return (
+    <>
+      {groups.map((g) => (
+        <div key={g.id} hidden={g.id !== activeGroupId}>
+          <PaneTree group={g} active={g.id === activeGroupId} laidOut />
+        </div>
+      ))}
+    </>
+  );
+}
+
 describe("PaneTree panel close", () => {
   beforeEach(() => {
     const first = makeLeaf("session-a");
@@ -27,7 +42,7 @@ describe("PaneTree panel close", () => {
   });
 
   it("keeps a Session panel until the user confirms", async () => {
-    render(<PaneTree />);
+    render(<Screens />);
     await userEvent.click(screen.getAllByRole("button", { name: "Request close" })[0]);
     expect(screen.getByRole("alertdialog", { name: "Close this panel?" })).toBeInTheDocument();
     expect(leaves(useLayoutStore.getState().tree!)).toHaveLength(2);

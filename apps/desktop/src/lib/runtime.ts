@@ -319,15 +319,6 @@ interface RuntimeState {
    *  neither survived a glance at another session (the send landed in that
    *  session's folder) nor stayed out of the way of an unrelated new screen. */
   draftWorkspaces: Record<string, string>;
-  /** The folder a draft pane was BORN from (the pane it was split off), keyed
-   *  the same way. Separate from the aim above because the two answer different
-   *  questions: the aim is where the session will land and is cleared the moment
-   *  the user picks "new folder", while this is what the pane offers to go back
-   *  to — losing it on the first toggle would make the choice one-way. */
-  draftOrigins: Record<string, string>;
-  /** Open a draft slot for a pane split off `folder`: records the origin AND
-   *  aims there, so the new pane continues the work in front of the user. */
-  openDraftFrom: (key: string, folder: string) => void;
   /** Point a draft slot at `path` — or, with null, back at a fresh dated folder.
    *  Pure state: unlike `switchWorkspace` it does NOT move the active folder,
    *  because a new pane must not drag the pane the user is still reading into a
@@ -621,19 +612,13 @@ function clientForSession(get: StoreGet, sid: string): AgentRuntime | null {
 }
 const emptyThread = (): Thread => ({ blocks: [], index: {}, loaded: false });
 
-/** Retire a draft slot's folder state entirely — its session was created, or the
- *  user asked for a plain New. Absent means "give the next session a fresh dated
- *  folder". Drops the origin too: the slot is done, and a stale origin would
- *  offer a later draft on the same leaf a folder it never came from. */
+/** Retire a draft slot's folder — its session was created, or the user asked for
+ *  a plain New. Absent means "give the next session a fresh dated folder". */
 function forgetDraftFolder(s: RuntimeState, key: string) {
-  const hadAim = key in s.draftWorkspaces;
-  const hadOrigin = key in s.draftOrigins;
-  if (!hadAim && !hadOrigin) return {};
+  if (!(key in s.draftWorkspaces)) return {};
   const draftWorkspaces = { ...s.draftWorkspaces };
   delete draftWorkspaces[key];
-  const draftOrigins = { ...s.draftOrigins };
-  delete draftOrigins[key];
-  return { draftWorkspaces, draftOrigins };
+  return { draftWorkspaces };
 }
 
 /** Drop the global draft slot's leftovers: an aborted first message, its pane
@@ -733,6 +718,26 @@ export function inheritedDraftFolder(
     return state.sessions.find((s) => s.id === source.sessionId)?.directory ?? null;
   }
   return state.draftWorkspaces[draftKeyFor(source.leafId)] ?? null;
+}
+
+/**
+ * Hand a freshly split pane the folder of the pane it came from, and remember
+ * that origin so the empty pane can offer the other answer (a new dated folder)
+ * as one click — see DraftDestination.
+ *
+ * Every way of making a split pane must go through here. It used to live in the
+ * Cmd+D handler alone, so the header's split buttons produced a pane with no
+ * origin: no chooser, and a first message that silently made a dated folder
+ * away from the project the user was working in.
+ */
+export function adoptSourceFolder(
+  newLeafId: string | null,
+  source: { leafId: string; sessionId: string | null } | null,
+): void {
+  if (!newLeafId) return;
+  const runtime = useRuntimeStore.getState();
+  const folder = inheritedDraftFolder(source, runtime);
+  if (folder) runtime.aimDraft(draftKeyFor(newLeafId), folder);
 }
 
 /** The composer's agent switch: "build" edits and runs; "plan" is OpenCode's
@@ -1156,8 +1161,7 @@ async function performTurn(
         // The destination has done its job: the session now carries its own
         // folder. Leaving the entry would silently aim this pane's NEXT draft
         // at the same project long after the user moved on.
-        const { draftWorkspaces = s.draftWorkspaces, draftOrigins = s.draftOrigins } =
-          forgetDraftFolder(s, draftSrc);
+        const { draftWorkspaces = s.draftWorkspaces } = forgetDraftFolder(s, draftSrc);
         // Move the in-flight send lock too, so a pane keyed on the new id (the
         // draft pane follows currentId onto the real session) still reads itself
         // as sending across the graft — no flicker to an unlocked composer.
@@ -1186,7 +1190,6 @@ async function performTurn(
           sessionModels,
           sessionVariants,
           draftWorkspaces,
-          draftOrigins,
         };
       });
       lockKey = id;
@@ -1837,7 +1840,6 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   workspace: null,
   webReadOnly: false,
   draftWorkspaces: {},
-  draftOrigins: {},
   switching: false,
   sending: false,
   sendingSessions: {},
@@ -2972,14 +2974,6 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
 
   // "New" opens a blank draft — no session is created until the first message (#3).
   // A fresh draft also drops any pinned folder: back to the dated-folder default.
-  openDraftFrom: (key, folder) =>
-    set((s) => ({
-      draftWorkspaces: { ...s.draftWorkspaces, [key]: folder },
-      draftOrigins: { ...s.draftOrigins, [key]: folder },
-    })),
-
-  // Clears the AIM only, never the origin — "new folder" has to be a choice the
-  // pane can take back.
   aimDraft: (key, path) =>
     set((s) => {
       if (path) return { draftWorkspaces: { ...s.draftWorkspaces, [key]: path } };
