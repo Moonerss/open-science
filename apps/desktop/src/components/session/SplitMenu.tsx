@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { FolderOpen, FolderPlus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/cn";
-import { isTauri, logDebug, pickFolder } from "@/lib/tauri";
+import { isTauri, pickFolder } from "@/lib/tauri";
 import { baseName } from "@/components/thread/WorkspaceChip";
 import { datedWorkspaceName } from "@/lib/runtime";
 
@@ -53,7 +53,6 @@ export function SplitMenu({
   const [at, setAt] = useState<{ top: number; left: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const openedAt = useRef(0);
 
   useEffect(() => {
     if (!open) return;
@@ -90,12 +89,6 @@ export function SplitMenu({
           ? anchor.top - height - 4
           : below,
     });
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() =>
-        // eslint-disable-next-line i18next/no-literal-string -- diagnostic line, not UI copy
-        void logDebug(`split menu: ${Math.round(performance.now() - openedAt.current)}ms`),
-      ),
-    );
   }, [open]);
 
   const pick = (folder: string | null) => {
@@ -107,7 +100,6 @@ export function SplitMenu({
     <button
       onClick={() => {
         if (!isTauri || !sourceFolder) return onSplit(null);
-        openedAt.current = performance.now();
         setOpen((o) => !o);
       }}
       className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-text"

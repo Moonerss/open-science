@@ -10,6 +10,7 @@ import { Toaster } from "@/components/ui/Toaster";
 import { SshSignInDialog } from "@/components/ui/SshSignInDialog";
 import { mockProject } from "@/lib/mock";
 import { adoptSourceFolder, useRuntimeStore } from "@/lib/runtime";
+import { useHoverTracking } from "@/lib/hoverTracking";
 import { ensureSetupProgressListener } from "@/lib/setup";
 import { useOverlayTitlebar, useUiStore } from "@/lib/store";
 import { overlayTitlebarStyle } from "@/lib/titlebar";
@@ -24,6 +25,8 @@ import { useNativeContextMenuGuard } from "@/lib/nativeMenu";
 
 export function AppShell() {
   const { t } = useTranslation("nav");
+  // One tracker for every message row in the app (lib/hoverTracking).
+  useHoverTracking();
   const { sidebarCollapsed, setSidebarCollapsed } = useUiStore();
   const isMobile = useIsMobile();
   // Gateway web client: hold the app behind a token gate until authenticated.

@@ -19,6 +19,7 @@ import { extractArtifactRefs, refToArtifactBlock } from "@/lib/artifacts";
 import { resolveArtifactPath } from "@/lib/artifactFile";
 import { useThrottledValue } from "@/lib/useThrottledValue";
 import { HSCROLL_ATTR } from "@/lib/wheelChain";
+import { HOVER_HOST } from "@/lib/hoverTracking";
 import { RunningDot } from "./RunningDot";
 
 // All block atoms are memoized on their props: a fold rebuilds only the one
@@ -139,11 +140,14 @@ export const UserMessage = memo(function UserMessage({
   }
 
   return (
-    <div className="group flex flex-col items-end">
+    <div {...{ [HOVER_HOST]: "" }} className="flex flex-col items-end">
       <div className="w-fit max-w-[85%] whitespace-pre-wrap break-words rounded-card bg-surface-2 px-4 py-2.5 text-[15px] leading-relaxed text-text">
         {block.text}
       </div>
-      <div className="flex items-center gap-0.5 pr-0.5 pt-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+      <div
+        data-hover-row
+        className="flex items-center gap-0.5 pr-0.5 pt-1"
+      >
         <button
           onClick={copy}
           title={copied ? t("message.copied") : t("message.copy")}
@@ -239,7 +243,7 @@ export const AgentMessage = memo(function AgentMessage({
   return (
     // Marked so a text selection inside an ANSWER (never a tool log or the
     // user's own message) can offer follow-up actions — see SelectionActions.
-    <div className="group" data-agent-message>
+    <div {...{ [HOVER_HOST]: "" }} data-agent-message>
       <MarkdownViewer>{shown}</MarkdownViewer>
       {refs.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
@@ -256,7 +260,10 @@ export const AgentMessage = memo(function AgentMessage({
           ))}
         </div>
       )}
-      <div className="flex min-w-0 items-center gap-1.5 pt-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+      <div
+        data-hover-row
+        className="flex min-w-0 items-center gap-1.5 pt-1"
+      >
         <button
           onClick={copy}
           title={copied ? t("message.copied") : t("message.copy")}

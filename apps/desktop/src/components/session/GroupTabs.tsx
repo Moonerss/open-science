@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pencil, Plus, X, PanelLeft } from "lucide-react";
-import { groupLabel, leaves, useLayoutStore, type LayoutGroup } from "@/lib/layout";
+import { groupLabel, useLayoutStore, type LayoutGroup } from "@/lib/layout";
 import { useOverlayTitlebar, useUiStore } from "@/lib/store";
 import { overlayTitlebarStyle } from "@/lib/titlebar";
-import { beginScreenSwitch } from "@/lib/switchProbe";
-import { hasParkedDraft } from "@/lib/composerStash";
-import { draftKeyFor } from "@/lib/runtime";
 import { cn } from "@/lib/cn";
 import { ContextMenu, ContextMenuItem } from "@/components/ui/ContextMenu";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -20,17 +17,20 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 /**
  * Does closing this Screen need a confirmation?
  *
- * Only when it would lose something the sidebar cannot give back: an unsent
- * message, or a pane arrangement the user built. An empty Screen, a fresh draft
- * nobody has typed into, or a session merely opened for a look — those close on
- * the click, because closing them costs nothing (the session itself, and any
- * turn running in it, live on outside the layout).
+ * Two Screens are worth nothing and close on the click: an empty one, and the
+ * tentative preview a sidebar click just opened and nobody has touched since
+ * (`ephemeralGroupId` — any real interaction pins it, #3). EVERYTHING else asks
+ * first, including a Screen restored by a relaunch: what a Screen holds is not
+ * knowable from the layout alone, and closing one the user had arranged and
+ * worked in is not a thing to do on a stray click.
+ *
+ * An earlier version of this asked only when it could SEE something to lose (an
+ * unsent line, more than one pane). That was wrong the moment the app was
+ * reopened: restored Screens carry real work and it looked like nothing.
  */
-function closeNeedsConfirm(group: LayoutGroup): boolean {
+function closeNeedsConfirm(group: LayoutGroup, ephemeralGroupId: string | null): boolean {
   if (!group.tree) return false;
-  const panes = leaves(group.tree);
-  if (panes.length > 1) return true;
-  return panes.some((pane) => hasParkedDraft(draftKeyFor(pane.id)));
+  return group.id !== ephemeralGroupId;
 }
 
 export function GroupTabs() {
@@ -115,10 +115,7 @@ export function GroupTabs() {
               <div
                 // Dock-drag target: hovering this tab mid-drag switches screens (#4).
                 data-group-tab={g.id}
-                onClick={() => {
-                  beginScreenSwitch(); // timed to the glass — see lib/switchProbe
-                  setActiveGroup(g.id);
-                }}
+                onClick={() => setActiveGroup(g.id)}
                 onDoubleClick={() => setEditingId(g.id)}
                 className={cn(
                   "group/tab flex h-7 min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors",
@@ -145,7 +142,7 @@ export function GroupTabs() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (closeNeedsConfirm(g)) setConfirmCloseId(g.id);
+                    if (closeNeedsConfirm(g, ephemeralGroupId)) setConfirmCloseId(g.id);
                     else closeGroup(g.id);
                   }}
                   aria-label={t("group.close")}

@@ -1,11 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useRuntimeStore } from "@/lib/runtime";
 import { findLeaf, leaves, recentScreens, useLayoutStore } from "@/lib/layout";
 import { useIsMobile } from "@/lib/useIsMobile";
 import { isGatewayWeb } from "@/lib/webMode";
 import { cn } from "@/lib/cn";
-import { markScreenSwitchCommit, markScreenSwitchEffects } from "@/lib/switchProbe";
 import { SessionView } from "@/components/session/SessionView";
 import { PaneTree } from "@/components/session/PaneTree";
 import { GroupTabs } from "@/components/session/GroupTabs";
@@ -199,20 +198,6 @@ export function LiveSessionPage() {
   const mounted = useMemo(() => new Set(live), [live]);
   /** Kept laid out and painted, so revealing one is a compositor change. */
   const warm = useMemo(() => new Set(live.slice(0, WARM_SCREENS)), [live]);
-  // Close the switch measurement in the commit that reveals the new screen —
-  // before paint, so the two halves can be told apart (lib/switchProbe). What
-  // matters is whether the incoming screen was warm BEFORE the switch: it is
-  // always warm after, being the active one.
-  const warmBefore = useRef<ReadonlySet<string>>(new Set());
-  useLayoutEffect(() => {
-    markScreenSwitchCommit();
-  }, [activeGroupId]);
-
-  useEffect(() => {
-    markScreenSwitchEffects(warmBefore.current.has(activeGroupId));
-    warmBefore.current = warm;
-  }, [activeGroupId, warm]);
-
   // Web / phone: no tiling — show the focused pane alone (its own titlebar), or
   // the onboarding if the group is somehow empty.
   if (webOrMobile) {

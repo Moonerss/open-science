@@ -1,9 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
-import { insertLeaf, leaves, makeLeaf, useLayoutStore } from "@/lib/layout";
-import { parkDraft, resetParkedDrafts } from "@/lib/composerStash";
-import { draftKeyFor } from "@/lib/runtime";
+import { makeLeaf, useLayoutStore } from "@/lib/layout";
+import { resetParkedDrafts } from "@/lib/composerStash";
 import { GroupTabs } from "./GroupTabs";
 
 describe("GroupTabs Screen close", () => {
@@ -36,9 +35,9 @@ describe("GroupTabs Screen close", () => {
     });
   });
 
-  // A Screen showing a session nobody has typed into holds nothing the sidebar
-  // cannot give back — closing it is not a decision worth a dialog.
-  it("closes a Screen with nothing to lose on the click", async () => {
+  // The preview a sidebar click just opened, untouched: nothing to lose.
+  it("closes an untouched preview Screen on the click", async () => {
+    useLayoutStore.setState({ ephemeralGroupId: "screen-a" });
     render(<GroupTabs />);
 
     await userEvent.click(screen.getAllByRole("button", { name: "Close screen" })[0]);
@@ -48,9 +47,25 @@ describe("GroupTabs Screen close", () => {
     expect(useLayoutStore.getState().groups[0].id).toBe("screen-b");
   });
 
-  it("asks first when a pane holds an unsent message", async () => {
-    const pane = leaves(useLayoutStore.getState().groups[0].tree!)[0];
-    parkDraft(draftKeyFor(pane.id), { text: "half-written prompt", files: [] });
+  it("closes an empty Screen on the click", async () => {
+    useLayoutStore.setState({
+      groups: [
+        { id: "screen-a", name: "", tree: null, focusedLeafId: null, zoomedLeafId: null },
+        useLayoutStore.getState().groups[1],
+      ],
+      tree: null,
+    });
+    render(<GroupTabs />);
+
+    await userEvent.click(screen.getAllByRole("button", { name: "Close screen" })[0]);
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(useLayoutStore.getState().groups).toHaveLength(1);
+  });
+
+  // Anything the user has actually worked in — including every Screen a
+  // relaunch restored, which is exactly where "it looked empty" went wrong.
+  it("asks before closing a Screen that was worked in", async () => {
     render(<GroupTabs />);
 
     await userEvent.click(screen.getAllByRole("button", { name: "Close screen" })[0]);
@@ -63,23 +78,6 @@ describe("GroupTabs Screen close", () => {
     await userEvent.click(screen.getAllByRole("button", { name: "Close screen" })[0]);
     await userEvent.click(screen.getByRole("button", { name: "Close Screen" }));
     expect(useLayoutStore.getState().groups).toHaveLength(1);
-  });
-
-  // A tiled Screen is an arrangement the user built; that IS worth confirming.
-  it("asks first when the Screen is more than one pane", async () => {
-    const state = useLayoutStore.getState();
-    const solo = state.groups[0].tree!;
-    const tiled = insertLeaf(solo, solo.id, "right", makeLeaf("session-c"));
-    useLayoutStore.setState({
-      groups: [{ ...state.groups[0], tree: tiled }, state.groups[1]],
-      tree: tiled,
-    });
-    render(<GroupTabs />);
-
-    await userEvent.click(screen.getAllByRole("button", { name: "Close screen" })[0]);
-
-    expect(screen.getByRole("alertdialog", { name: "Close this Screen?" })).toBeInTheDocument();
-    expect(useLayoutStore.getState().groups).toHaveLength(2);
   });
 });
 

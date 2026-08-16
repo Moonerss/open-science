@@ -382,6 +382,7 @@ export function SessionView({
   }, [eid, visible]);
 
   const chatRef = useRef<HTMLDivElement>(null);
+
   const {
     contentRef: chatContentRef,
     onScroll: onChatScroll,

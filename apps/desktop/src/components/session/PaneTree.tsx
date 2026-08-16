@@ -6,12 +6,15 @@ import {
   useLayoutStore,
   type DockEdge,
   type LayoutGroup,
+  type PaneLeaf,
   type PaneNode,
   type PaneSplit,
 } from "@/lib/layout";
 import { useDragDivider } from "@/lib/useDragDivider";
 import { useDragPane } from "@/lib/dragPane";
 import { cn } from "@/lib/cn";
+import { hasParkedDraft } from "@/lib/composerStash";
+import { draftKeyFor } from "@/lib/runtime";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SessionView } from "./SessionView";
 import { PresentedArtifactPane } from "./PresentedArtifactPane";
@@ -249,6 +252,15 @@ function Divider({
   );
 }
 
+/**
+ * Does closing this pane need a confirmation? Only when it holds something:
+ * a session (whatever is in it is not knowable from here) or an unsent line.
+ * A fresh split nobody used is an empty slot and closes on the click.
+ */
+function paneNeedsConfirm(leaf: PaneLeaf): boolean {
+  return !!leaf.sessionId || !!leaf.artifact || hasParkedDraft(draftKeyFor(leaf.id));
+}
+
 function Leaf({
   leaf,
   zoom,
@@ -311,7 +323,15 @@ function Leaf({
           chromeAsTitlebar={false}
           zoom={zoom}
           solo={solo}
-          onClose={solo ? undefined : () => setConfirmClose(true)}
+          onClose={
+            solo
+              ? undefined
+              : // Same rule as closing a Screen: only ask when there is
+                // something to lose. An unbound pane nobody has typed into is
+                // just an empty slot — closing it on the click is the point of
+                // having opened it.
+                () => (paneNeedsConfirm(leaf) ? setConfirmClose(true) : closePane(leafId))
+          }
         />
       )}
       {confirmClose && (
