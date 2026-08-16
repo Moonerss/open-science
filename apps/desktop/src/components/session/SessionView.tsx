@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import type { RuntimeStatus } from "@ai4s/shared";
-import { draftKeyFor, rootSessionOf, useRuntimeStore } from "@/lib/runtime";
+import { draftKeyFor, inheritedDraftFolder, rootSessionOf, useRuntimeStore } from "@/lib/runtime";
 import { useLayoutStore } from "@/lib/layout";
 import { startPaneDrag } from "@/lib/dragPane";
 import { isGatewayWeb } from "@/lib/webMode";
@@ -37,7 +37,7 @@ import { GoalPill } from "@/components/thread/GoalPill";
 import { GOAL_RESUME_NUDGE } from "@/lib/goalPrompts";
 import { baseName } from "@/components/thread/WorkspaceChip";
 import { WorkflowStarters } from "@/components/thread/WorkflowStarters";
-import { DraftDestination } from "@/components/session/DraftDestination";
+import { SplitMenu } from "@/components/session/SplitMenu";
 import { InteractionPrompt } from "@/components/thread/InteractionPrompt";
 import { InspectorShell } from "@/components/inspector/InspectorShell";
 import { MaximizePaneButton, RightPane } from "@/components/inspector/RightPane";
@@ -92,6 +92,17 @@ export function SessionView({
   /** Close this pane (shown as an ✕ in the header). Omitted for the sole pane
    *  and on web/mobile. */
   onClose,
+  /** This pane's screen is on display. Inactive screens stay MOUNTED but
+   *  hidden, so the pane keeps its state and its stream — but anything that
+   *  claims an app-wide hand-off, polls, or opens something the user cannot see
+   *  must stand down until its screen is shown again. */
+  visible = true,
+  /** This pane has layout boxes: it is on display, or its screen is hidden in a
+   *  way that keeps them. Everything that MEASURES the DOM keys off this rather
+   *  than `visible` — a screen that never lost its layout must not re-measure on
+   *  the way back, because forcing that layout mid-commit is what makes a switch
+   *  feel heavy (measured: it doubled the React phase). */
+  laidOut = true,
 }: {
   sessionId: string | null;
   leafId: string;
@@ -100,6 +111,8 @@ export function SessionView({
   zoom?: number;
   solo?: boolean;
   onClose?: () => void;
+  visible?: boolean;
+  laidOut?: boolean;
 }) {
   const { t } = useTranslation(["session", "common"]);
   // `sid` is what this pane WRITES to (null = draft → create on first send).
@@ -109,8 +122,11 @@ export function SessionView({
   // `key` addresses the per-session maps (threads/panes/agents): a real session
   // by id, else this pane's own `draft:<leafId>` slot.
   const sid = sessionId;
-  const currentId = useRuntimeStore((s) => s.currentId);
-  const eid = sid ?? (focused ? currentId : null);
+  // Only a focused DRAFT pane follows `currentId`. Selecting it unconditionally
+  // subscribed every pane of every mounted Screen to a value that changes on
+  // each switch — so switching re-rendered the whole app for nothing.
+  const currentId = useRuntimeStore((s) => (sid === null && focused ? s.currentId : null));
+  const eid = sid ?? currentId;
   // This pane's OWN draft slot, so several unbound panes each keep an
   // independent draft and each create their own session on first send (#2).
   const draftKey = draftKeyFor(leafId);
@@ -135,12 +151,13 @@ export function SessionView({
   const retryNotice = useRuntimeStore((s) => (eid ? s.retryNotices[eid] : undefined));
   const serverUrl = useRuntimeStore((s) => s.serverUrl);
   const sessions = useRuntimeStore((s) => s.sessions);
+  const draftWorkspaces = useRuntimeStore((s) => s.draftWorkspaces);
   const error = useRuntimeStore((s) => s.error);
   const questions = useRuntimeStore((s) => s.questions);
   const permissions = useRuntimeStore((s) => s.permissions);
   const sessionParents = useRuntimeStore((s) => s.sessionParents);
   const workspace = useRuntimeStore((s) => s.workspace);
-  const panes = useRuntimeStore((s) => s.panes);
+  const pane = useRuntimeStore((s) => s.panes[key]);
   const commands = useRuntimeStore((s) => s.commands);
   const connect = useRuntimeStore((s) => s.connect);
   const sendPrompt = useRuntimeStore((s) => s.sendPrompt);
@@ -165,6 +182,7 @@ export function SessionView({
   const sessionAgents = useRuntimeStore((s) => s.sessionAgents);
   const setAgentMode = useRuntimeStore((s) => s.setAgentMode);
   const bindSession = useLayoutStore((s) => s.bindSession);
+  const aimDraft = useRuntimeStore((s) => s.aimDraft);
   const dockSession = useLayoutStore((s) => s.dockSession);
   const setLeafZoom = useLayoutStore((s) => s.setLeafZoom);
   // Any real interaction with a tentative (preview) screen pins it (#3).
@@ -186,8 +204,15 @@ export function SessionView({
   // Split THIS pane: dock a fresh DRAFT pane on the given edge. No session or
   // folder is created until that pane's first send (#2), and it carries its own
   // independent draft (thread/composer/model).
-  const onSplit = (edge: "right" | "bottom") => {
-    dockSession(leafId, edge, null);
+  // Where a pane split off this one would continue. Null when there is nothing
+  // to continue — a pane with no session and no folder of its own — and then
+  // the split button has nothing to ask about. Deliberately not the active
+  // workspace: that follows whichever session was opened last (#69).
+  const splitFolder = inheritedDraftFolder({ leafId, sessionId: sid }, { sessions, draftWorkspaces });
+  /** Split, with the destination the user just chose (null = its own dated folder). */
+  const onSplit = (edge: "right" | "bottom", folder: string | null) => {
+    const created = dockSession(leafId, edge, null);
+    if (created && folder) aimDraft(draftKeyFor(created), folder);
   };
   const onSend = async (text: string, attachments?: string[]) => {
     pinEphemeral();
@@ -285,7 +310,6 @@ export function SessionView({
     return [...byPath.values()];
   }, [thread?.blocks]);
 
-  const pane = panes[key];
   // An ACP agent is driving instead of the bundled OpenCode runtime (#14).
   const acp = useRuntimeStore((s) => s.runtimeKind) === "acp";
   const acpConfigOptions = useRuntimeStore((s) => s.acpConfigOptions);
@@ -301,7 +325,7 @@ export function SessionView({
   // Header tool labels ("Files", "Runs", "Subagents") need real room. `solo`
   // only says this is the single pane, which a narrow window makes irrelevant.
   const headerRef = useRef<HTMLDivElement>(null);
-  const headerCompact = useCompactWidth(headerRef, HEADER_LABEL_MIN_PX);
+  const headerCompact = useCompactWidth(headerRef, HEADER_LABEL_MIN_PX, laidOut);
   const showToolLabels = solo && !headerCompact;
   const openNotebook = (notebook: (typeof uniqueNotebooks)[number]) => {
     pinEphemeral();
@@ -316,8 +340,12 @@ export function SessionView({
 
   // Offer the subagent panel only once this conversation has actually spawned
   // one — a plain chat should not carry a control for something it never does.
-  const hasSubagents = (thread?.blocks ?? []).some(
-    (b) => b.kind === "tool-call" && (b.tool === "task" || !!b.childSessionId),
+  const hasSubagents = useMemo(
+    () =>
+      (thread?.blocks ?? []).some(
+        (b) => b.kind === "tool-call" && (b.tool === "task" || !!b.childSessionId),
+      ),
+    [thread?.blocks],
   );
 
   const [hasRuns, setHasRuns] = useState(() => (eid ? (RUNS_KNOWN.get(eid) ?? false) : false));
@@ -329,7 +357,10 @@ export function SessionView({
     setHasRuns(eid ? (RUNS_KNOWN.get(eid) ?? false) : false);
   }
   useEffect(() => {
-    if (!eid) return;
+    // Re-checked when the screen is shown again, not only on mount: a hidden
+    // pane's session can produce its first run while nobody is looking, and
+    // panes no longer re-mount on a Screen switch to pick that up.
+    if (!eid || !visible) return;
     let cancelled = false;
     void queryRuns({ sessionId: eid, limit: 1 }).then((p) => {
       RUNS_KNOWN.set(eid, p.total > 0);
@@ -338,7 +369,7 @@ export function SessionView({
     return () => {
       cancelled = true;
     };
-  }, [eid]);
+  }, [eid, visible]);
 
   const chatRef = useRef<HTMLDivElement>(null);
   const {
@@ -346,7 +377,11 @@ export function SessionView({
     onScroll: onChatScroll,
     atLatest,
     jumpToLatest,
-  } = useChatScroll(chatRef, `chat:${key}`, !historyLoading && !inspectorFillsPane);
+    // A screen hidden WITHOUT layout reads every offset as 0, so recording one
+    // would overwrite where the reader actually was; standing down also means
+    // the position is restored on the way back. A screen that keeps its layout
+    // keeps its scroll too, and must not be disturbed.
+  } = useChatScroll(chatRef, `chat:${key}`, laidOut && !historyLoading && !inspectorFillsPane);
   // Take back the vertical trackpad gestures WebKit latches onto a wide table
   // or code block inside the conversation.
   useWheelChain(chatRef);
@@ -359,7 +394,10 @@ export function SessionView({
   useEffect(() => {
     const el = composerRef.current;
     if (!el) return;
-    const measure = () => setComposerH(el.offsetHeight);
+    // Zero means "not laid out" (a hidden screen), never a real height — taking
+    // it would strip the conversation's bottom padding and re-add it a frame
+    // after the screen is shown again.
+    const measure = () => setComposerH((h) => el.offsetHeight || h);
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(measure);
@@ -369,6 +407,10 @@ export function SessionView({
 
   const autoOpened = useRef(new Set<string>());
   useEffect(() => {
+    // Not while hidden: an unbound pane's artifact falls back to the CURRENT
+    // session, so a background Screen would open a notebook in the pane the
+    // user is actually looking at. Deferred to the moment its Screen is shown.
+    if (!visible) return;
     const agentNb = uniqueNotebooks.find(
       (b) => b.tool.toLowerCase().includes("jupyter") && !autoOpened.current.has(b.path),
     );
@@ -377,7 +419,7 @@ export function SessionView({
       openArtifact(agentNb, sid ?? undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uniqueNotebooks.length]);
+  }, [uniqueNotebooks.length, visible]);
 
   // Per field, for the same reason as the runtime selectors above: a bare
   // `useUiStore()` subscribes this pane to the whole UI store, so anything that
@@ -463,7 +505,12 @@ export function SessionView({
               {title ?? ""}
             </h1>
           )}
-          {eid && (
+          {/* Only while on display: the pill polls the plugin's state file every
+              few seconds, and its popover lives in a body portal — a hidden
+              screen would keep polling and could leave that popover floating
+              over the screen the user switched to. Re-mounting is free: the
+              pill paints its last known goal from cache. */}
+          {eid && visible && (
             <GoalPill
               sessionId={eid}
               compact={headerCompact}
@@ -534,22 +581,22 @@ export function SessionView({
           {canSplit && (
             <>
               <ZoomMenu zoom={zoom} onPick={(z) => setLeafZoom(leafId, z)} />
-              <button
-                onClick={() => void onSplit("right")}
-                className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-text"
-                title={t("group.splitRight")}
-                aria-label={t("group.splitRight")}
-              >
-                <PanelRight size={13} strokeWidth={1.5} />
-              </button>
-              <button
-                onClick={() => void onSplit("bottom")}
-                className="rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-text"
-                title={t("group.splitDown")}
-                aria-label={t("group.splitDown")}
-              >
-                <PanelBottom size={13} strokeWidth={1.5} />
-              </button>
+              {/* Each split button asks where the new pane's work goes before
+                  creating it — see SplitMenu. */}
+              <SplitMenu
+                sourceFolder={splitFolder}
+                // eslint-disable-next-line i18next/no-literal-string -- DockEdge enum, not UI copy
+                onSplit={(folder) => onSplit("right", folder)}
+                icon={<PanelRight size={13} strokeWidth={1.5} />}
+                label={t("group.splitRight")}
+              />
+              <SplitMenu
+                sourceFolder={splitFolder}
+                // eslint-disable-next-line i18next/no-literal-string -- DockEdge enum, not UI copy
+                onSplit={(folder) => onSplit("bottom", folder)}
+                icon={<PanelBottom size={13} strokeWidth={1.5} />}
+                label={t("group.splitDown")}
+              />
               {onClose && (
                 <button
                   onClick={onClose}
@@ -692,10 +739,7 @@ export function SessionView({
               </div>
             )}
             {connected && isEmpty && !eid && !webReadOnly && (
-              <>
-                <DraftDestination draftKey={draftKey} />
-                <WorkflowStarters onPick={(p) => void onSend(p)} />
-              </>
+              <WorkflowStarters onPick={(p) => void onSend(p)} />
             )}
             {historyLoading && <ThreadSkeleton />}
             {!historyLoading && thread && (
@@ -874,6 +918,9 @@ export function SessionView({
                   : undefined
               }
               modelSessionId={key}
+              // Only the pane the user is looking at may take a prepared draft.
+              acceptsHandoff={focused}
+              visible={laidOut}
               draftKey={draftKey}
               showWorkspaceChip={eid === null}
               sessionDir={sessionDir ?? undefined}

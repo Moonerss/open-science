@@ -9,7 +9,7 @@ import { PaneDragGhost } from "@/components/session/PaneDragGhost";
 import { Toaster } from "@/components/ui/Toaster";
 import { SshSignInDialog } from "@/components/ui/SshSignInDialog";
 import { mockProject } from "@/lib/mock";
-import { draftKeyFor, inheritedDraftFolder, useRuntimeStore } from "@/lib/runtime";
+import { adoptSourceFolder, useRuntimeStore } from "@/lib/runtime";
 import { ensureSetupProgressListener } from "@/lib/setup";
 import { useOverlayTitlebar, useUiStore } from "@/lib/store";
 import { overlayTitlebarStyle } from "@/lib/titlebar";
@@ -63,17 +63,13 @@ export function AppShell() {
       }
       // The pane being split from, read BEFORE the split moves the focus.
       const source = layout.focusedLeafId ? findLeaf(layout.tree, layout.focusedLeafId) : null;
-      const leafId = layout.split(dir, null);
       // A split continues the work in front of you, so the new pane starts in
       // the same folder — the pane offers "new folder" as one click while it is
       // still empty. Nothing is created until its first message either way.
-      if (!leafId) return;
-      const runtime = useRuntimeStore.getState();
-      const folder = inheritedDraftFolder(
+      adoptSourceFolder(
+        layout.split(dir, null),
         source ? { leafId: source.id, sessionId: source.sessionId } : null,
-        runtime,
       );
-      if (folder) runtime.openDraftFrom(draftKeyFor(leafId), folder);
     };
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;

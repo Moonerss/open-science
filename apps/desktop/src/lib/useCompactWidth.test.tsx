@@ -12,9 +12,9 @@ import { useCompactWidth } from "./useCompactWidth";
  * FIRST measurement: whatever the initial render shows is what the user sees
  * before any observer could fire.
  */
-function Probe({ minPx }: { minPx: number }) {
+function Probe({ minPx, laidOut = true }: { minPx: number; laidOut?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
-  const compact = useCompactWidth(ref, minPx);
+  const compact = useCompactWidth(ref, minPx, laidOut);
   return (
     <div ref={ref} data-testid="box">
       {compact ? "icon" : "icon+label"}
@@ -42,5 +42,20 @@ describe("useCompactWidth", () => {
     withWidth(900);
     render(<Probe minPx={420} />);
     expect(screen.getByTestId("box").textContent).toBe("icon+label");
+  });
+
+  // An inactive Screen is mounted but display:none, so its panes measure zero
+  // until it is shown. The measurement must happen in the layout effect of the
+  // render that reveals it — an observer callback lands a frame later, which is
+  // the flash this hook exists to prevent.
+  it("measures a pane that mounts with no layout as soon as it is shown", () => {
+    withWidth(0); // hidden Screen: no box
+    const { rerender } = render(<Probe minPx={420} laidOut={false} />);
+    // Zero is not a measurement — it must not read as "narrow" either.
+    expect(screen.getByTestId("box").textContent).toBe("icon+label");
+
+    withWidth(200);
+    rerender(<Probe minPx={420} laidOut />);
+    expect(screen.getByTestId("box").textContent).toBe("icon");
   });
 });

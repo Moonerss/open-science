@@ -387,8 +387,8 @@
     "noDetail": "No steps were recorded for this subagent.",
     "loadingDetail": "Loading…"
   },
-  "draftDestination": {
-    "title": "This pane's session will be created in",
+  "splitDestination": {
+    "title": "The new pane's session will be created in",
     "continueIn": "Continue in {{name}}",
     "newFolder": "New folder",
     "chooseOther": "Choose another folder…"

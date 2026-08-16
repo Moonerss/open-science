@@ -387,8 +387,8 @@
     "noDetail": "Für diesen Subagenten wurden keine Schritte aufgezeichnet.",
     "loadingDetail": "Wird geladen…"
   },
-  "draftDestination": {
-    "title": "Sitzung dieses Bereichs wird angelegt in",
+  "splitDestination": {
+    "title": "Sitzung des neuen Bereichs wird angelegt in",
     "continueIn": "In {{name}} fortfahren",
     "newFolder": "Neuer Ordner",
     "chooseOther": "Anderen Ordner wählen…"

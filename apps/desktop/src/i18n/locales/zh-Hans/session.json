@@ -378,8 +378,8 @@
     "noDetail": "这个子智能体没有记录到步骤。",
     "loadingDetail": "加载中…"
   },
-  "draftDestination": {
-    "title": "该窗格的会话将建在",
+  "splitDestination": {
+    "title": "新窗格的会话将建在",
     "continueIn": "沿用 {{name}}",
     "newFolder": "新建文件夹",
     "chooseOther": "选择其他文件夹…"
