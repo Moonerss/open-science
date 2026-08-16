@@ -504,6 +504,30 @@ describe("token usage", () => {
   });
 });
 
+// OpenCode's SessionCompaction.create writes a message with role "user" and
+// hangs the compaction part off it. The echoed-user-text guard therefore ate
+// every compaction marker before it could be emitted — #62 shipped a renderer
+// nothing ever fed.
+describe("compaction arrives on a user-role message", () => {
+  it("emits session.compacted anyway", async () => {
+    const events: OpenCodeEvent[] = [];
+    const client = new OpenCodeClient({ baseUrl: `http://127.0.0.1:${server.port}` });
+    client.onEvent((e) => events.push(e));
+    await client.connect();
+    const sessionId = await client.createSession();
+
+    await client.sendPrompt(sessionId, "compact the context");
+    await waitFor(() => events.some((e) => e.type === "session.idle"));
+
+    expect(events.filter((e) => e.type === "session.compacted")).toEqual([
+      { type: "session.compacted", sessionId: "ses_mock", auto: true, overflow: true },
+    ]);
+    // The marker message carries no text; nothing should be echoed for it.
+    expect(events.some((e) => e.type === "text.updated" && e.text === "")).toBe(false);
+    client.close();
+  });
+});
+
 describe("per-prompt agent pinning", () => {
   it("sends the host presentation contract and the optional agent field", async () => {
     const client = new OpenCodeClient({ baseUrl: `http://127.0.0.1:${server.port}` });

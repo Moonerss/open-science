@@ -420,6 +420,25 @@ describe("historyToThread", () => {
     expect(t.blocks[0]).toMatchObject({ kind: "compaction", auto: true, at: 4_242 });
   });
 
+  // The shape OpenCode actually persists: SessionCompaction.create writes a
+  // message with role "user" and hangs the compaction part off THAT. Reading
+  // compaction parts only on assistant messages meant a reopened conversation
+  // silently lost every marker — the turns vanish with nothing to say why.
+  it("shows a compaction stored on its user-role marker message", () => {
+    const t = historyToThread([
+      { role: "user", parts: [{ type: "text", text: "analyze this" }] },
+      { role: "user", created: 9_100, parts: [{ type: "compaction" }] },
+      { role: "assistant", parts: [{ type: "text", text: "carrying on" }] },
+    ]);
+    expect(t.blocks.map((b) => b.kind)).toEqual(["user", "compaction", "agent"]);
+    expect(t.blocks[1]).toMatchObject({ kind: "compaction", auto: true, at: 9_100 });
+  });
+
+  it("does not render the marker message as an empty user turn", () => {
+    const t = historyToThread([{ role: "user", parts: [{ type: "compaction" }] }]);
+    expect(t.blocks.filter((b) => b.kind === "user")).toHaveLength(0);
+  });
+
   // Reported after a restart: `/goal read the docs…` showed correctly while
   // live, then reopened as the goal plugin's entire instruction block. The
   // collapse itself works — it just needs the command templates, and a cold

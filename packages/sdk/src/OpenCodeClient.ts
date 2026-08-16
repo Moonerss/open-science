@@ -1377,8 +1377,17 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
           | (OpenCodePart & { sessionID?: string; messageID?: string })
           | undefined;
         if (!part) return;
-        // The user's own message is echoed here; the app already shows it locally.
-        if (part.messageID && this.roles.get(String(part.messageID)) === "user") return;
+        // The user's own message is echoed here; the app already shows it
+        // locally. Compaction is the exception and must be checked FIRST:
+        // OpenCode's SessionCompaction.create opens a message with role "user"
+        // purely to hang the marker off, so this guard used to swallow every
+        // compaction before it could be emitted.
+        if (
+          part.type !== "compaction" &&
+          part.messageID &&
+          this.roles.get(String(part.messageID)) === "user"
+        )
+          return;
         const sessionId = String(part.sessionID ?? "");
         if (part.type === "text") {
           const t = part as { id: string; text: string };

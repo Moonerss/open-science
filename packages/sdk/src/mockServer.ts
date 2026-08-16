@@ -72,6 +72,29 @@ export function startMockOpenCode(port = 0): Promise<MockOpenCode> {
     ];
   };
 
+  // A turn the runtime compacts. Mirrors SessionCompaction.create: OpenCode
+  // opens a message with role "user" and hangs the compaction part off THAT,
+  // which is why the echoed-user-text guard has to let this part through.
+  const streamCompactedTurn = (sessionID: string) => {
+    const push = (obj: unknown) => clients.forEach((c) => send(c, obj));
+    push({
+      type: "message.updated",
+      properties: { info: { id: "mc", sessionID, role: "user", time: { created: 1 } } },
+    });
+    push({
+      type: "message.part.updated",
+      properties: {
+        part: { id: "pc", sessionID, messageID: "mc", type: "compaction", auto: true, overflow: true },
+      },
+    });
+    push({ type: "message.part.updated", properties: { part: { id: "p9", sessionID, messageID: "m2", type: "text", text: "Carrying on." } } });
+    push({ type: "session.idle", properties: { sessionID } });
+    messages[sessionID] = [
+      { info: { id: "mc", role: "user", time: { created: 1 } }, parts: [{ type: "compaction", auto: true, overflow: true }] },
+      { info: { id: "m2", role: "assistant", time: { created: 2 } }, parts: [{ type: "text", text: "Carrying on." }] },
+    ];
+  };
+
   // A turn whose model call fails: the server announces the retry via
   // session.status, gives up with session.error, and the stored assistant
   // message carries the error (that is all a reloaded history has to show).
@@ -268,7 +291,11 @@ export function startMockOpenCode(port = 0): Promise<MockOpenCode> {
         }
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end("{}");
-        const turn = body.includes("flaky") ? streamFlakyTurn : streamTurn;
+        const turn = body.includes("flaky")
+          ? streamFlakyTurn
+          : body.includes("compact")
+            ? streamCompactedTurn
+            : streamTurn;
         setTimeout(() => turn(decodeURIComponent(m[1])), 5);
       });
       return;

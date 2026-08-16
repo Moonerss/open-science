@@ -4043,6 +4043,24 @@ export function historyToThread(messages: HistoryMessage[], commands?: CommandIn
   // the "! cmd" echo and the output inline — never the synthetic marker text.
   let shellTurn = false;
   for (const m of messages) {
+    // Compaction is checked before the role split, because OpenCode stores the
+    // marker on a message with role "user" (SessionCompaction.create opens one
+    // solely to hang the part off). Reading it only on assistant messages made
+    // every reopened conversation lose the seam — turns disappear from the
+    // model's view with nothing on screen to say why.
+    const compaction = m.parts.find((p) => p.type === "compaction");
+    if (compaction) {
+      const c = compaction as unknown as { auto?: boolean; overflow?: boolean };
+      blocks.push({
+        kind: "compaction",
+        auto: c.auto !== false,
+        ...(c.overflow ? { overflow: true } : {}),
+        // The part carries no clock of its own, so its message dates it.
+        ...(m.created ? { at: m.created } : {}),
+      });
+      // That message exists only to carry the marker — it has no text to show.
+      continue;
+    }
     if (m.role === "user") {
       shellTurn = m.parts.some((p) => p.type === "text" && p.synthetic);
       if (shellTurn) continue;
@@ -4080,20 +4098,6 @@ export function historyToThread(messages: HistoryMessage[], commands?: CommandIn
         }
         else if (p.type === "reasoning" && p.text?.trim()) {
           blocks.push({ kind: "reasoning", text: p.text });
-        }
-        else if (p.type === "compaction") {
-          // Reloading a compacted conversation must show the same marker the
-          // live stream did — otherwise history looks like turns went missing.
-          const c = p as unknown as { auto?: boolean; overflow?: boolean };
-          blocks.push({
-            kind: "compaction",
-            auto: c.auto !== false,
-            ...(c.overflow ? { overflow: true } : {}),
-            // A compaction part carries no clock of its own, so the message it
-            // sits in dates it. Without this a reopened conversation lost the
-            // "When:" line the live one shows.
-            ...(m.created ? { at: m.created } : {}),
-          });
         }
         else if (p.type === "tool") {
           // Interactive tools are surfaced by InteractionPrompt, not the thread;
