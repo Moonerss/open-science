@@ -368,6 +368,21 @@
     "at": "Zeitpunkt: {{time}}",
     "originalKept": "Die vollständige ursprüngliche Unterhaltung bleibt lokal gespeichert."
   },
+  "meta": {
+    "context": "{{used}} / {{limit}} ({{percent}} %)",
+    "contextUnknown": "{{used}} Tokens",
+    "durationTitle": "Dauer dieser Antwort",
+    "costTitle": "Kosten dieses Zuges",
+    "tooltip": {
+      "input": "Eingabe: {{n}}",
+      "cacheRead": "Cache gelesen: {{n}}",
+      "cacheWrite": "Cache geschrieben: {{n}}",
+      "output": "Ausgabe: {{n}}",
+      "reasoning": "Schlussfolgern: {{n}}",
+      "context": "Belegter Kontext: {{used}} von {{limit}}",
+      "contextUnknown": "Belegter Kontext: {{used}} (Fenster unbekannt)"
+    }
+  },
   "selection": {
     "aria": "Aktionen für den markierten Text",
     "quote": "Zitieren",

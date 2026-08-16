@@ -432,6 +432,78 @@ describe("OpenCodeClient ↔ OpenCode server", () => {
   });
 });
 
+// The numbers exist only on the assistant message — nowhere else in the
+// protocol — so a client that narrows them away leaves the app unable to say
+// how full the context window is at all.
+describe("token usage", () => {
+  it("surfaces a turn's running totals as message.usage", async () => {
+    const events: OpenCodeEvent[] = [];
+    const client = new OpenCodeClient({ baseUrl: `http://127.0.0.1:${server.port}` });
+    client.onEvent((e) => events.push(e));
+    await client.connect();
+    const sessionId = await client.createSession();
+
+    await client.sendPrompt(sessionId, "run a literature review");
+    await waitFor(() => events.some((e) => e.type === "session.idle"));
+
+    const usage = events.filter(
+      (e): e is Extract<OpenCodeEvent, { type: "message.usage" }> => e.type === "message.usage",
+    );
+    // Republished as the turn runs, ending with the final numbers.
+    expect(usage.length).toBeGreaterThan(1);
+    expect(usage[usage.length - 1]).toMatchObject({
+      messageID: "m1",
+      completed: 2,
+      usage: { input: 3000, output: 900, reasoning: 0, cacheRead: 118000, cacheWrite: 2100, cost: 0.42 },
+    });
+    client.close();
+  });
+
+  it("ties streamed text to its message, including the parts that arrive as deltas", async () => {
+    const events: OpenCodeEvent[] = [];
+    const client = new OpenCodeClient({ baseUrl: `http://127.0.0.1:${server.port}` });
+    client.onEvent((e) => events.push(e));
+    await client.connect();
+    const sessionId = await client.createSession();
+
+    await client.sendPrompt(sessionId, "run a literature review");
+    await waitFor(() => events.some((e) => e.type === "session.idle"));
+
+    const text = events.filter(
+      (e): e is Extract<OpenCodeEvent, { type: "text.updated" }> => e.type === "text.updated",
+    );
+    // A delta-driven update that forgot the id would blank it out on the block.
+    expect(text.every((e) => e.messageID === "m1")).toBe(true);
+    client.close();
+  });
+
+  it("recovers the same usage from history", async () => {
+    const events: OpenCodeEvent[] = [];
+    const client = new OpenCodeClient({ baseUrl: `http://127.0.0.1:${server.port}` });
+    client.onEvent((e) => events.push(e));
+    await client.connect();
+    const sessionId = await client.createSession();
+    await client.sendPrompt(sessionId, "run a literature review");
+    // The turn stores its messages as it ends; reading before that gets the
+    // server's empty placeholder.
+    await waitFor(() => events.some((e) => e.type === "session.idle"));
+
+    const msgs = await client.getMessages(sessionId);
+    const assistant = msgs.find((m) => m.role === "assistant");
+    expect(assistant?.usage).toEqual({
+      input: 3000,
+      output: 900,
+      reasoning: 0,
+      cacheRead: 118000,
+      cacheWrite: 2100,
+      cost: 0.42,
+    });
+    // A user message has no tokens at all — not a zeroed-out object.
+    expect(msgs.find((m) => m.role === "user")?.usage).toBeUndefined();
+    client.close();
+  });
+});
+
 describe("per-prompt agent pinning", () => {
   it("sends the host presentation contract and the optional agent field", async () => {
     const client = new OpenCodeClient({ baseUrl: `http://127.0.0.1:${server.port}` });

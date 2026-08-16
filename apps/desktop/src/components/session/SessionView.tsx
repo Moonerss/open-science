@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import type { RuntimeStatus } from "@ai4s/shared";
-import { draftKeyFor, rootSessionOf, useRuntimeStore } from "@/lib/runtime";
+import { contextLimitFor, draftKeyFor, rootSessionOf, useRuntimeStore } from "@/lib/runtime";
 import { useLayoutStore } from "@/lib/layout";
 import { startPaneDrag } from "@/lib/dragPane";
 import { isGatewayWeb } from "@/lib/webMode";
@@ -131,6 +131,10 @@ export function SessionView({
   const backgroundReview = useRuntimeStore((s) =>
     eid ? s.backgroundReviews[eid] : undefined,
   );
+  // A scalar again (see above): the providers array is replaced wholesale on
+  // every catalog refresh, so selecting the resolved number keeps this pane out
+  // of those repaints.
+  const contextLimit = useRuntimeStore((s) => contextLimitFor(s, key));
   const step = useRuntimeStore((s) => (eid ? (s.stepCounts[eid] ?? 0) : 0));
   const retryNotice = useRuntimeStore((s) => (eid ? s.retryNotices[eid] : undefined));
   const serverUrl = useRuntimeStore((s) => s.serverUrl);
@@ -704,6 +708,7 @@ export function SessionView({
                 handlers={handlers}
                 liveReasoningIndex={liveReasoningIndex}
                 workspaceDirectory={sessionDir ?? undefined}
+                contextLimit={contextLimit}
               />
             )}
             {backgroundReview && eid && (

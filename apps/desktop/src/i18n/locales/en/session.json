@@ -368,6 +368,21 @@
     "at": "When: {{time}}",
     "originalKept": "The full original conversation is still stored locally."
   },
+  "meta": {
+    "context": "{{used}} / {{limit}} ({{percent}}%)",
+    "contextUnknown": "{{used}} tokens",
+    "durationTitle": "How long this reply took",
+    "costTitle": "What this turn cost",
+    "tooltip": {
+      "input": "Input: {{n}}",
+      "cacheRead": "Cache read: {{n}}",
+      "cacheWrite": "Cache write: {{n}}",
+      "output": "Output: {{n}}",
+      "reasoning": "Reasoning: {{n}}",
+      "context": "Context in use: {{used}} of {{limit}}",
+      "contextUnknown": "Context in use: {{used}} (window unknown)"
+    }
+  },
   "selection": {
     "aria": "Actions for the selected text",
     "quote": "Quote",

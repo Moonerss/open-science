@@ -1,4 +1,4 @@
-import type { RuntimeStatus, ToolCallStatus } from "@ai4s/shared";
+import type { MessageUsage, RuntimeStatus, ToolCallStatus } from "@ai4s/shared";
 
 export type { RuntimeStatus, ToolCallStatus };
 
@@ -17,6 +17,9 @@ export interface TextUpdatedEvent {
   sessionId: string;
   partId: string;
   text: string;
+  /** The assistant message this text belongs to. It is what lets a later
+   *  `message.usage` find the block to stamp its tokens onto. */
+  messageID?: string;
 }
 /** The model's reasoning ("thinking") for a step — streamed like text but kept
  *  separate so the UI can show it dimmed, apart from the final answer. Without
@@ -151,10 +154,27 @@ export interface CompactedEvent {
   overflow?: boolean;
 }
 
+/** Running token totals for an assistant turn. OpenCode republishes the whole
+ *  message on every update, so this arrives repeatedly during a turn and one
+ *  last time with the final numbers — the app just overwrites.
+ *
+ *  Without it the app cannot answer "how full is the context" at all: the
+ *  numbers exist only here and in history, nowhere else in the protocol. */
+export interface MessageUsageEvent {
+  type: "message.usage";
+  sessionId: string;
+  messageID: string;
+  usage: MessageUsage;
+  /** Epoch ms from the message's own clock — `completed` unset while running. */
+  created?: number;
+  completed?: number;
+}
+
 export type OpenCodeEvent =
   | TextUpdatedEvent
   | ReasoningUpdatedEvent
   | CompactedEvent
+  | MessageUsageEvent
   | StepUpdatedEvent
   | ToolUpdatedEvent
   | SessionIdleEvent
@@ -261,6 +281,9 @@ export interface HistoryMessage {
    *  on user messages; the app derives a session's agent mode from the last
    *  user message when (re)opening it. */
   agent?: string;
+  /** Token accounting for an assistant message. Assistant-only, and absent on
+   *  runtimes that don't report it (ACP) or on mock/synthetic messages. */
+  usage?: MessageUsage;
   parts: HistoryPart[];
 }
 export interface HistoryPart {

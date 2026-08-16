@@ -368,6 +368,21 @@
     "at": "Quand : {{time}}",
     "originalKept": "La conversation d’origine complète reste stockée en local."
   },
+  "meta": {
+    "context": "{{used}} / {{limit}} ({{percent}} %)",
+    "contextUnknown": "{{used}} jetons",
+    "durationTitle": "Durée de cette réponse",
+    "costTitle": "Coût de ce tour",
+    "tooltip": {
+      "input": "Entrée : {{n}}",
+      "cacheRead": "Lecture du cache : {{n}}",
+      "cacheWrite": "Écriture du cache : {{n}}",
+      "output": "Sortie : {{n}}",
+      "reasoning": "Raisonnement : {{n}}",
+      "context": "Contexte utilisé : {{used}} sur {{limit}}",
+      "contextUnknown": "Contexte utilisé : {{used}} (fenêtre inconnue)"
+    }
+  },
   "selection": {
     "aria": "Actions sur le texte sélectionné",
     "quote": "Citer",

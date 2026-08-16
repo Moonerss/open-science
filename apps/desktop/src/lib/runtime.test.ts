@@ -270,6 +270,57 @@ describe("foldEvent", () => {
   });
 });
 
+describe("message usage", () => {
+  const usage = { input: 3_000, output: 900, reasoning: 0, cacheRead: 118_000, cacheWrite: 2_100, cost: 0.42 };
+
+  it("stamps a turn's tokens onto the text it produced", () => {
+    const s = foldAll([
+      { type: "text.updated", sessionId: S, partId: "p1", text: "Done", messageID: "m1" },
+      { type: "message.usage", sessionId: S, messageID: "m1", usage, created: 100, completed: 7_400 },
+    ]);
+    expect(s.blocks[0]).toMatchObject({ kind: "agent", usage, created: 100, completed: 7_400 });
+  });
+
+  it("stamps every block the same message produced — a tool call splits the answer", () => {
+    const s = foldAll([
+      { type: "text.updated", sessionId: S, partId: "p1", text: "Let me look", messageID: "m1" },
+      { type: "tool.updated", sessionId: S, callId: "c1", tool: "read", status: "success" },
+      { type: "text.updated", sessionId: S, partId: "p2", text: "Found it", messageID: "m1" },
+      { type: "message.usage", sessionId: S, messageID: "m1", usage },
+    ]);
+    const agents = s.blocks.filter((b) => b.kind === "agent");
+    expect(agents).toHaveLength(2);
+    expect(agents.every((b) => b.kind === "agent" && b.usage === usage)).toBe(true);
+  });
+
+  it("leaves another message's blocks alone", () => {
+    const s = foldAll([
+      { type: "text.updated", sessionId: S, partId: "p1", text: "First", messageID: "m1" },
+      { type: "text.updated", sessionId: S, partId: "p2", text: "Second", messageID: "m2" },
+      { type: "message.usage", sessionId: S, messageID: "m2", usage },
+    ]);
+    expect(s.blocks[0]).not.toHaveProperty("usage");
+    expect(s.blocks[1]).toMatchObject({ usage });
+  });
+
+  it("survives the text that keeps streaming after it", () => {
+    // Usage and text arrive interleaved on separate events, and the text upsert
+    // rebuilds the block — so a later token must not blank the numbers out.
+    const s = foldAll([
+      { type: "text.updated", sessionId: S, partId: "p1", text: "Wor", messageID: "m1" },
+      { type: "message.usage", sessionId: S, messageID: "m1", usage },
+      { type: "text.updated", sessionId: S, partId: "p1", text: "Working on it", messageID: "m1" },
+    ]);
+    expect(s.blocks[0]).toMatchObject({ kind: "agent", markdown: "Working on it", usage });
+  });
+
+  it("is a no-op when the message has produced no text yet", () => {
+    // A turn that calls tools first reports tokens before any answer exists.
+    const s = foldAll([{ type: "message.usage", sessionId: S, messageID: "m1", usage }]);
+    expect(s.blocks).toHaveLength(0);
+  });
+});
+
 describe("subagent activity", () => {
   it("records the child session id on a task tool block", () => {
     const s = foldAll([
@@ -339,6 +390,34 @@ describe("historyToThread", () => {
     const t = historyToThread(msgs);
     expect(t.blocks.map((b) => b.kind)).toEqual(["user", "agent", "tool-call"]);
     expect(t.blocks[2]).toMatchObject({ kind: "tool-call", status: "success" });
+  });
+
+  it("recovers a reloaded turn's tokens and timings, so reopening keeps the meta line", () => {
+    const usage = { input: 3_000, output: 900, reasoning: 0, cacheRead: 118_000, cacheWrite: 2_100, cost: 0.42 };
+    const t = historyToThread([
+      {
+        role: "assistant",
+        id: "m1",
+        created: 1_000,
+        completed: 8_400,
+        usage,
+        parts: [{ type: "text", text: "done" }],
+      },
+    ]);
+    expect(t.blocks[0]).toMatchObject({
+      kind: "agent",
+      messageID: "m1",
+      created: 1_000,
+      completed: 8_400,
+      usage,
+    });
+  });
+
+  it("dates a reloaded compaction by its message — the part carries no clock", () => {
+    const t = historyToThread([
+      { role: "assistant", created: 4_242, parts: [{ type: "compaction" }] },
+    ]);
+    expect(t.blocks[0]).toMatchObject({ kind: "compaction", auto: true, at: 4_242 });
   });
 
   // Reported after a restart: `/goal read the docs…` showed correctly while

@@ -1693,6 +1693,29 @@ function modelForSession(state: RuntimeState, key: string): { model: string | nu
   return { model, variant };
 }
 
+/** Context window of the model a session's next turn will actually use, or 0
+ *  when nothing knows it.
+ *
+ *  Deliberately NOT `modelForSession` — that returns `model: null` when a
+ *  configured agent owns the model, which is the right thing to SEND and the
+ *  wrong thing to look a context window up by. Here the question is only which
+ *  model string is in force, so the agent's own setting is resolved instead of
+ *  collapsed to null. 0 means unknown (see `ProviderModelInfo.contextLimit`);
+ *  callers show tokens without a percentage rather than inventing a limit. */
+export function contextLimitFor(state: RuntimeState, key: string): number {
+  const agent = agentForTurn(state, key);
+  const model =
+    state.sessionModels[key] ?? (agent ? state.agentModels[agent] : undefined) ?? state.defaultModel;
+  if (!model) return 0;
+  const i = model.indexOf("/");
+  if (i <= 0) return 0;
+  const [providerId, modelId] = [model.slice(0, i), model.slice(i + 1)];
+  const found = state.providers
+    .find((p) => p.id === providerId)
+    ?.models.find((m) => m.id === modelId);
+  return found?.contextLimit ?? 0;
+}
+
 export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   status: "offline",
   serverUrl: initialUrl(),
@@ -3769,9 +3792,20 @@ export function foldEvent(
       // A ```review fence in the agent's text becomes a structured reviewer card.
       const { clean, review } = splitReview(event.text);
       const key = `text:${event.partId}`;
-      if (key in index) blocks[index[key]] = { kind: "agent", markdown: clean };
-      else if (clean) {
-        blocks.push({ kind: "agent", markdown: clean });
+      const id = event.messageID ? { messageID: event.messageID } : {};
+      if (key in index) {
+        // Keep whatever `message.usage` already stamped on this block — the
+        // turn's tokens arrive on their own event, interleaved with the text.
+        const prev = blocks[index[key]];
+        const kept = prev.kind === "agent" ? prev : undefined;
+        blocks[index[key]] = {
+          ...kept,
+          kind: "agent",
+          markdown: clean,
+          ...id,
+        };
+      } else if (clean) {
+        blocks.push({ kind: "agent", markdown: clean, ...id });
         index[key] = blocks.length - 1;
       }
       if (review) {
@@ -3886,6 +3920,28 @@ export function foldEvent(
         at: Date.now(),
       });
       return { blocks, index };
+    }
+    case "message.usage": {
+      // Stamp the turn's tokens onto every text block that message produced —
+      // one turn can emit several (a tool call splits the answer in two), and
+      // each of them belongs to the same accounting. Republished throughout
+      // the turn, so this overwrites rather than accumulates.
+      let touched = false;
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        const b = blocks[i];
+        if (b.kind !== "agent" || b.messageID !== event.messageID) continue;
+        blocks[i] = {
+          ...b,
+          usage: event.usage,
+          ...(event.created ? { created: event.created } : {}),
+          ...(event.completed ? { completed: event.completed } : {}),
+        };
+        touched = true;
+      }
+      // Usage can land before the text it belongs to (a turn that called tools
+      // first reports tokens with no answer yet). Nothing to stamp; the next
+      // republish after the text arrives carries the same numbers.
+      return touched ? { blocks, index } : state;
     }
     case "session.idle": {
       const last = blocks[blocks.length - 1];
@@ -4008,10 +4064,18 @@ export function historyToThread(messages: HistoryMessage[], commands?: CommandIn
       if (command) blocks.push({ kind: "user", text: command, ...id });
       else if (text) blocks.push({ kind: "user", text, ...id });
     } else {
+      // Same accounting the live stream stamps on, recovered from the stored
+      // message so a reopened conversation shows the identical meta line.
+      const meta = {
+        ...(m.id ? { messageID: m.id } : {}),
+        ...(m.created ? { created: m.created } : {}),
+        ...(m.completed ? { completed: m.completed } : {}),
+        ...(m.usage ? { usage: m.usage } : {}),
+      };
       for (const p of m.parts) {
         if (p.type === "text" && p.text?.trim()) {
           const { clean, review } = splitReview(p.text);
-          if (clean) blocks.push({ kind: "agent", markdown: clean });
+          if (clean) blocks.push({ kind: "agent", markdown: clean, ...meta });
           if (review) blocks.push(review);
         }
         else if (p.type === "reasoning" && p.text?.trim()) {
@@ -4025,6 +4089,10 @@ export function historyToThread(messages: HistoryMessage[], commands?: CommandIn
             kind: "compaction",
             auto: c.auto !== false,
             ...(c.overflow ? { overflow: true } : {}),
+            // A compaction part carries no clock of its own, so the message it
+            // sits in dates it. Without this a reopened conversation lost the
+            // "When:" line the live one shows.
+            ...(m.created ? { at: m.created } : {}),
           });
         }
         else if (p.type === "tool") {

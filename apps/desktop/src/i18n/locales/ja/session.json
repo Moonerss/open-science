@@ -360,6 +360,21 @@
     "at": "日時: {{time}}",
     "originalKept": "元の会話全体はローカルに保存されたままです。"
   },
+  "meta": {
+    "context": "{{used}} / {{limit}}（{{percent}}%）",
+    "contextUnknown": "{{used}} トークン",
+    "durationTitle": "この返信にかかった時間",
+    "costTitle": "このターンの費用",
+    "tooltip": {
+      "input": "入力: {{n}}",
+      "cacheRead": "キャッシュ読み取り: {{n}}",
+      "cacheWrite": "キャッシュ書き込み: {{n}}",
+      "output": "出力: {{n}}",
+      "reasoning": "推論: {{n}}",
+      "context": "使用中のコンテキスト: {{used}} / {{limit}}",
+      "contextUnknown": "使用中のコンテキスト: {{used}}（ウィンドウ不明）"
+    }
+  },
   "selection": {
     "aria": "選択したテキストへの操作",
     "quote": "引用",

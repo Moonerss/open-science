@@ -360,6 +360,21 @@
     "at": "时间：{{time}}",
     "originalKept": "完整的原始对话仍然保存在本地。"
   },
+  "meta": {
+    "context": "{{used}} / {{limit}}（{{percent}}%）",
+    "contextUnknown": "{{used}} tokens",
+    "durationTitle": "本次回复耗时",
+    "costTitle": "本轮花费",
+    "tooltip": {
+      "input": "输入：{{n}}",
+      "cacheRead": "缓存读取：{{n}}",
+      "cacheWrite": "缓存写入：{{n}}",
+      "output": "输出：{{n}}",
+      "reasoning": "推理：{{n}}",
+      "context": "已用上下文：{{used}} / {{limit}}",
+      "contextUnknown": "已用上下文：{{used}}（窗口大小未知）"
+    }
+  },
   "selection": {
     "aria": "对所选文本的操作",
     "quote": "引用",

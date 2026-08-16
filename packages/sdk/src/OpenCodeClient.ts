@@ -21,6 +21,7 @@ import type {
   SkillInfo,
   ToolCallStatus,
 } from "./types";
+import type { MessageUsage } from "@ai4s/shared";
 import { DEFAULT_OPENCODE_URL } from "./types";
 import type { AgentRuntime } from "./runtime";
 import { BaseAgentRuntime } from "./base-runtime";
@@ -93,6 +94,36 @@ function errorText(error: unknown): string | undefined {
   const err = error as { name?: string; message?: string; data?: { message?: string } } | undefined;
   const full = err?.data?.message ?? err?.message ?? err?.name;
   return typeof full === "string" && full ? full.split("\n")[0] : undefined;
+}
+
+/** OpenCode's own token shape on an assistant message (both in history and on
+ *  every `message.updated`). Flattened into `MessageUsage` so callers never
+ *  reach through `cache.` — and so a runtime that omits a field reads as 0
+ *  rather than NaN in a sum. */
+interface RawTokens {
+  input?: number;
+  output?: number;
+  reasoning?: number;
+  cache?: { read?: number; write?: number };
+}
+
+/** Normalize a message's `tokens`/`cost` into `MessageUsage`.
+ *
+ *  Returns undefined when the runtime reported no tokens at all — a user
+ *  message, an ACP turn, a mock. An all-zero `tokens` object is NOT undefined:
+ *  a turn that was aborted before the first response really did use nothing,
+ *  and reporting that is different from having no data. */
+function toUsage(tokens: RawTokens | undefined, cost: unknown): MessageUsage | undefined {
+  if (!tokens || typeof tokens !== "object") return undefined;
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  return {
+    input: n(tokens.input),
+    output: n(tokens.output),
+    reasoning: n(tokens.reasoning),
+    cacheRead: n(tokens.cache?.read),
+    cacheWrite: n(tokens.cache?.write),
+    cost: n(cost),
+  };
 }
 
 /** Split a "provider/model" default-model string into the `{providerID, modelID}`
@@ -186,7 +217,10 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
    *  full part only at text-start (empty) and text-end; every token in between
    *  arrives as a message.part.delta that must be summed here — otherwise the
    *  app shows nothing until the whole passage is finished. */
-  private readonly textStreams = new Map<string, { sessionId: string; text: string }>();
+  private readonly textStreams = new Map<
+    string,
+    { sessionId: string; text: string; messageID?: string }
+  >();
   /** partID → accumulated reasoning text. Reasoning parts stream the same way as
    *  text (field "text" deltas) but were dropped because they were never seeded
    *  here — so the model's thinking never reached the UI. */
@@ -617,11 +651,14 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
         time?: { completed?: number; created?: number };
         error?: unknown;
         agent?: string;
+        cost?: number;
+        tokens?: RawTokens;
       };
       parts: HistoryMessage["parts"];
     }>;
     return arr.map((m) => {
       const error = errorText(m.info.error);
+      const usage = toUsage(m.info.tokens, m.info.cost);
       return {
         role: m.info.role,
         ...(m.info.id ? { id: m.info.id } : {}),
@@ -629,6 +666,7 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
         created: m.info.time?.created,
         ...(error ? { error } : {}),
         ...(m.info.agent ? { agent: m.info.agent } : {}),
+        ...(usage ? { usage } : {}),
         parts: m.parts ?? [],
       };
     });
@@ -1293,9 +1331,33 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
       case "message.updated": {
         // Learn each message's role so we can skip the echoed user message parts.
         const info = props.info as
-          | { id?: string; role?: string; sessionID?: string; agent?: string }
+          | {
+              id?: string;
+              role?: string;
+              sessionID?: string;
+              agent?: string;
+              cost?: number;
+              tokens?: RawTokens;
+              time?: { created?: number; completed?: number };
+            }
           | undefined;
         if (info?.id && info.role) this.roles.set(info.id, info.role);
+        // An assistant message republishes its running token totals here on
+        // every update — this is the ONLY place the protocol reports them, so
+        // dropping the event is what left the app unable to show how much of
+        // the context window a conversation had eaten.
+        if (info?.role === "assistant" && info.id && info.sessionID) {
+          const usage = toUsage(info.tokens, info.cost);
+          if (usage)
+            this.emit({
+              type: "message.usage",
+              sessionId: String(info.sessionID),
+              messageID: String(info.id),
+              usage,
+              ...(info.time?.created ? { created: info.time.created } : {}),
+              ...(info.time?.completed ? { completed: info.time.completed } : {}),
+            });
+        }
         // A user message surfaces its id (so the app can tag the live block for
         // editing) and its agent (so the per-session agent mode stays in sync —
         // plan_exit "Yes" injects a build one). Emitted for every user message,
@@ -1320,8 +1382,18 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
         const sessionId = String(part.sessionID ?? "");
         if (part.type === "text") {
           const t = part as { id: string; text: string };
-          this.textStreams.set(t.id, { sessionId, text: t.text ?? "" });
-          this.emit({ type: "text.updated", sessionId, partId: t.id, text: t.text ?? "" });
+          // The message id rides along in the stream state: every later delta
+          // re-emits the whole text, and the fold upserts by part id — so an
+          // event that forgot the id would blank it out again.
+          const messageID = part.messageID ? String(part.messageID) : undefined;
+          this.textStreams.set(t.id, { sessionId, text: t.text ?? "", messageID });
+          this.emit({
+            type: "text.updated",
+            sessionId,
+            partId: t.id,
+            text: t.text ?? "",
+            ...(messageID ? { messageID } : {}),
+          });
         } else if (part.type === "reasoning") {
           // Seed the reasoning stream so its "text" deltas accumulate (below),
           // and surface the thinking the app used to discard.
@@ -1396,7 +1468,13 @@ export class OpenCodeClient extends BaseAgentRuntime implements AgentRuntime {
         const acc = this.textStreams.get(partId);
         if (acc) {
           acc.text += d.delta;
-          this.emit({ type: "text.updated", sessionId: acc.sessionId, partId, text: acc.text });
+          this.emit({
+            type: "text.updated",
+            sessionId: acc.sessionId,
+            partId,
+            text: acc.text,
+            ...(acc.messageID ? { messageID: acc.messageID } : {}),
+          });
           return;
         }
         const racc = this.reasoningStreams.get(partId);

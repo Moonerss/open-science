@@ -31,17 +31,44 @@ export function startMockOpenCode(port = 0): Promise<MockOpenCode> {
     // message.part.delta events, then the full part again at text-end.
     const D = (partID: string, delta: string) =>
       push({ type: "message.part.delta", properties: { sessionID, messageID: "m1", partID, field: "text", delta } });
-    P({ id: "p1", type: "text", text: "" });
+    // Real OpenCode republishes the whole assistant message as its token totals
+    // grow — the only place usage is reported at all.
+    const U = (tokens: Record<string, unknown>, completed?: number) =>
+      push({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "m1",
+            sessionID,
+            role: "assistant",
+            time: { created: 1, ...(completed ? { completed } : {}) },
+            cost: 0.42,
+            tokens,
+          },
+        },
+      });
+    P({ id: "p1", type: "text", messageID: "m1", text: "" });
     D("p1", "Planning ");
+    U({ input: 3000, output: 12, reasoning: 0, cache: { read: 118000, write: 2100 } });
     D("p1", "the analysis. ");
-    P({ id: "p1", type: "text", text: "Planning the analysis. " });
+    P({ id: "p1", type: "text", messageID: "m1", text: "Planning the analysis. " });
     P({ id: "c1", type: "tool", callID: "c1", tool: "literature-search", state: { status: "running", title: "literature-search (OpenAlex)" } });
     P({ id: "c1", type: "tool", callID: "c1", tool: "literature-search", state: { status: "completed", title: "literature-search (OpenAlex, PubMed)" } });
-    P({ id: "p2", type: "text", text: "Wrote data/corpus.csv and drafted report.md." });
+    P({ id: "p2", type: "text", messageID: "m1", text: "Wrote data/corpus.csv and drafted report.md." });
+    U({ input: 3000, output: 900, reasoning: 0, cache: { read: 118000, write: 2100 } }, 2);
     push({ type: "session.idle", properties: { sessionID } });
     messages[sessionID] = [
       { info: { role: "user" }, parts: [{ type: "text", text: "run a literature review" }] },
-      { info: { role: "assistant", time: { created: 1, completed: 2 } }, parts: [{ type: "text", text: "Planning the analysis. Wrote data/corpus.csv." }] },
+      {
+        info: {
+          id: "m1",
+          role: "assistant",
+          time: { created: 1, completed: 2 },
+          cost: 0.42,
+          tokens: { input: 3000, output: 900, reasoning: 0, cache: { read: 118000, write: 2100 } },
+        },
+        parts: [{ type: "text", text: "Planning the analysis. Wrote data/corpus.csv." }],
+      },
     ];
   };
 

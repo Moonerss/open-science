@@ -7,10 +7,12 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import type {
   ArtifactBlock,
   DataTableBlock,
+  MessageUsage,
   RunningJobsBlock,
   StatusLineBlock,
   UserMessageBlock,
 } from "@ai4s/shared";
+import { MessageMeta } from "./MessageMeta";
 import { cn } from "@/lib/cn";
 import { MarkdownViewer } from "@/components/markdown-viewer/MarkdownViewer";
 import { extractArtifactRefs, refToArtifactBlock } from "@/lib/artifacts";
@@ -178,9 +180,19 @@ export const UserMessage = memo(function UserMessage({
 
 export const AgentMessage = memo(function AgentMessage({
   markdown,
+  created,
+  completed,
+  usage,
+  contextLimit,
   onOpenArtifact,
 }: {
   markdown: string;
+  /** Turn timings and token accounting, when the runtime reported them —
+   *  rendered beside Copy in the hover row (see MessageMeta). */
+  created?: number;
+  completed?: number;
+  usage?: MessageUsage;
+  contextLimit?: number;
   onOpenArtifact?: (a: ArtifactBlock) => void;
 }) {
   const { t } = useTranslation(["session", "common"]);
@@ -244,15 +256,21 @@ export const AgentMessage = memo(function AgentMessage({
           ))}
         </div>
       )}
-      <div className="flex items-center gap-0.5 pt-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+      <div className="flex min-w-0 items-center gap-1.5 pt-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
         <button
           onClick={copy}
           title={copied ? t("message.copied") : t("message.copy")}
           aria-label={t("message.copy")}
-          className="rounded p-1 text-muted hover:bg-surface-2 hover:text-text"
+          className="shrink-0 rounded p-1 text-muted hover:bg-surface-2 hover:text-text"
         >
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
+        <MessageMeta
+          created={created}
+          completed={completed}
+          usage={usage}
+          contextLimit={contextLimit}
+        />
       </div>
     </div>
   );
