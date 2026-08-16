@@ -78,6 +78,7 @@ import {
   isMutatingTool,
   shouldAutoReview,
 } from "./autoReview";
+import { isGoalInjectedPrompt } from "./goalPrompts";
 import { notifyPermissionRequest } from "./systemNotification";
 import { fallbackDefaultModel } from "@/components/settings/modelCatalog";
 import { listProvidersWithAvailability } from "./zenModels";
@@ -1081,6 +1082,10 @@ async function performTurn(
   // onto the real id mid-turn — track the current key so the lock moves with it
   // (and the finally clears the right one).
   let lockKey = echoKey;
+  // Goal mode's resume nudge is a turn the app sends on the session's behalf —
+  // echoing it would put words in the user's mouth, and reloaded history hides
+  // it too (historyToThread), so the live thread must agree.
+  const showEcho = !isGoalInjectedPrompt(echo);
   set((s) => {
     const cur = s.threads[echoKey] ?? emptyThread();
     return {
@@ -1088,7 +1093,11 @@ async function performTurn(
       sendingSessions: { ...s.sendingSessions, [echoKey]: true },
       threads: {
         ...s.threads,
-        [echoKey]: { ...cur, loaded: true, blocks: [...cur.blocks, { kind: "user", text: echo }] },
+        [echoKey]: {
+          ...cur,
+          loaded: true,
+          blocks: showEcho ? [...cur.blocks, { kind: "user", text: echo }] : cur.blocks,
+        },
       },
     };
   });
@@ -3988,8 +3997,10 @@ export function historyToThread(messages: HistoryMessage[], commands?: CommandIn
         .trim();
       // The app's own auto-review turn (#72): the user never wrote it, so it is
       // not shown as their message — on reload as well as live. The reviewer's
-      // answer and its findings card stay.
-      if (text === AUTO_REVIEW_PROMPT) continue;
+      // answer and its findings card stay. Goal mode's auto-continue turns are
+      // hidden the same way: the plugin writes them straight into the session,
+      // and the pill (not a wall of policy text) is where a goal reports itself.
+      if (text === AUTO_REVIEW_PROMPT || isGoalInjectedPrompt(text)) continue;
       const command = asTypedCommand(text);
       // Tag with the message id so the row can be edited (revert + resend).
       // A "/command" echo keeps the id too — editing re-runs the command.

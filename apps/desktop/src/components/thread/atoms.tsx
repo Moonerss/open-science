@@ -16,6 +16,7 @@ import { MarkdownViewer } from "@/components/markdown-viewer/MarkdownViewer";
 import { extractArtifactRefs, refToArtifactBlock } from "@/lib/artifacts";
 import { resolveArtifactPath } from "@/lib/artifactFile";
 import { useThrottledValue } from "@/lib/useThrottledValue";
+import { HSCROLL_ATTR } from "@/lib/wheelChain";
 import { RunningDot } from "./RunningDot";
 
 // All block atoms are memoized on their props: a fold rebuilds only the one
@@ -259,7 +260,14 @@ export const AgentMessage = memo(function AgentMessage({
 
 export const DataTable = memo(function DataTable({ block }: { block: DataTableBlock }) {
   return (
-    <div className="overflow-x-auto rounded-card border border-border bg-surface shadow-card">
+    // `overflow-y-hidden`: a lone `overflow-x` makes the other axis `auto` too,
+    // and the scrollbar's own height then made this card eat vertical wheel
+    // events that belonged to the conversation. The marker hands WebKit's
+    // latched trackpad gestures back as well (lib/wheelChain).
+    <div
+      {...{ [HSCROLL_ATTR]: "" }}
+      className="overflow-x-auto overflow-y-hidden rounded-card border border-border bg-surface shadow-card"
+    >
       {block.caption && (
         <div className="border-b border-border px-4 py-2 text-xs text-muted">{block.caption}</div>
       )}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OpenCodeEvent, HistoryMessage } from "@ai4s/sdk";
 import { AUTO_REVIEW_PROMPT } from "./autoReview";
+import { GOAL_RESUME_NUDGE } from "./goalPrompts";
 import {
   datedWorkspaceName,
   explainRuntimeError,
@@ -574,6 +575,34 @@ describe("historyToThread", () => {
       kind: "reviewer",
       findings: [{ level: "warn", title: "seed not pinned" }],
     });
+  });
+
+  // Goal mode drives itself by writing user turns into the session. Those are
+  // machine prompts (continuation policy wrapped around the objective) and were
+  // shown verbatim as if the user had typed them.
+  it("hides the goal plugin's auto-continue and the app's resume nudge", () => {
+    const msgs: HistoryMessage[] = [
+      { role: "user", parts: [{ type: "text", text: "train the model" }] },
+      { role: "assistant", parts: [{ type: "text", text: "started" }] },
+      {
+        role: "user",
+        parts: [
+          {
+            type: "text",
+            text:
+              "Continue working toward the active session goal.\n\n" +
+              "<untrusted_objective>\ntrain the model\n</untrusted_objective>\n\n" +
+              "Continuation behavior:\n- This goal persists across turns.",
+          },
+        ],
+      },
+      { role: "assistant", parts: [{ type: "text", text: "continued" }] },
+      { role: "user", parts: [{ type: "text", text: GOAL_RESUME_NUDGE }] },
+      { role: "assistant", parts: [{ type: "text", text: "resumed" }] },
+    ];
+    const t = historyToThread(msgs);
+    expect(t.blocks.map((b) => b.kind)).toEqual(["user", "agent", "agent", "agent"]);
+    expect(t.blocks[0]).toMatchObject({ text: "train the model" });
   });
 });
 

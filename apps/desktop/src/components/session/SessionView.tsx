@@ -27,12 +27,14 @@ import { overlayTitlebarStyle } from "@/lib/titlebar";
 import { useCompactWidth } from "@/lib/useCompactWidth";
 import { fileInspectorFromBlock } from "@/lib/artifacts";
 import { useChatScroll } from "@/lib/scrollMemory";
+import { useWheelChain } from "@/lib/wheelChain";
 import { BlockList, type BlockHandlers } from "@/components/thread/BlockList";
 import { SubagentPane } from "@/components/thread/SubagentPane";
 import { SelectionActions } from "@/components/thread/SelectionActions";
 import { Elapsed } from "@/components/thread/ToolGroup";
 import { Composer } from "@/components/thread/Composer";
-import { GOAL_RESUME_NUDGE, GoalPill } from "@/components/thread/GoalPill";
+import { GoalPill } from "@/components/thread/GoalPill";
+import { GOAL_RESUME_NUDGE } from "@/lib/goalPrompts";
 import { baseName } from "@/components/thread/WorkspaceChip";
 import { WorkflowStarters } from "@/components/thread/WorkflowStarters";
 import { DraftDestination } from "@/components/session/DraftDestination";
@@ -65,6 +67,13 @@ function findLastRunningTool(blocks?: ThreadBlocks): ToolCallBlock | undefined {
  */
 /** Header width below which the tool buttons show icons without their labels. */
 const HEADER_LABEL_MIN_PX = 620;
+
+/** Sessions already known to have (or not have) runs. The Runs toggle used to
+ *  appear one async query after mount, and every header control that appears
+ *  late steals width from the session title next to it — so switching Screens
+ *  painted the full title and then re-truncated it a frame later. Re-mounting a
+ *  session already seen this run now paints its final header immediately. */
+const RUNS_KNOWN = new Map<string, boolean>();
 
 export function SessionView({
   sessionId,
@@ -311,11 +320,21 @@ export function SessionView({
     (b) => b.kind === "tool-call" && (b.tool === "task" || !!b.childSessionId),
   );
 
-  const [hasRuns, setHasRuns] = useState(false);
+  const [hasRuns, setHasRuns] = useState(() => (eid ? (RUNS_KNOWN.get(eid) ?? false) : false));
+  // A pane can be pointed at another session without unmounting — adopt that
+  // session's known answer in this render, not a frame later.
+  const runsFor = useRef(eid);
+  if (runsFor.current !== eid) {
+    runsFor.current = eid;
+    setHasRuns(eid ? (RUNS_KNOWN.get(eid) ?? false) : false);
+  }
   useEffect(() => {
-    if (!eid) return setHasRuns(false);
+    if (!eid) return;
     let cancelled = false;
-    void queryRuns({ sessionId: eid, limit: 1 }).then((p) => !cancelled && setHasRuns(p.total > 0));
+    void queryRuns({ sessionId: eid, limit: 1 }).then((p) => {
+      RUNS_KNOWN.set(eid, p.total > 0);
+      if (!cancelled) setHasRuns(p.total > 0);
+    });
     return () => {
       cancelled = true;
     };
@@ -328,6 +347,9 @@ export function SessionView({
     atLatest,
     jumpToLatest,
   } = useChatScroll(chatRef, `chat:${key}`, !historyLoading && !inspectorFillsPane);
+  // Take back the vertical trackpad gestures WebKit latches onto a wide table
+  // or code block inside the conversation.
+  useWheelChain(chatRef);
 
   // Measure the floating composer so the conversation can pad its bottom by
   // exactly that height (in real px, outside the chat zoom) — the last message
@@ -634,7 +656,12 @@ export function SessionView({
           // Bottom padding (real px, outside the zoom) = the measured floating
           // composer height, so the last message always clears it at any zoom.
           style={{ paddingBottom: composerH + 12 }}
-          className="flex-1 overflow-y-auto"
+          // `overflow-x-hidden` is deliberate: `overflow-y-auto` alone promotes
+          // the other axis to `auto`, so one over-wide message (an unbreakable
+          // path, a wide card) let the ENTIRE conversation be dragged sideways.
+          // Nothing here needs to scroll horizontally as a page — tables, code
+          // blocks and tool output each carry their own horizontal scroller.
+          className="flex-1 overflow-y-auto overflow-x-hidden"
         >
           {/* Zoom the CHAT content (not the scroll box or the composer). */}
           <div
