@@ -325,7 +325,7 @@ If you use Open Science Desktop in your research, please cite it:
   title   = {Open Science Desktop: a local-first, model-agnostic AI research workbench},
   year    = {2026},
   version = {0.4.2},
-  doi     = {10.5281/zenodo.21950242},
+  doi     = {10.5281/zenodo.21967622},
   url     = {https://github.com/ai4s-research/open-science},
   license = {MIT}
 }
