@@ -586,7 +586,7 @@ pub fn commit(root: &Path, message: &str) -> Result<bool, String> {
     let sref = snapshot_ref(root);
 
     // Stage the whole working tree into the DEDICATED index (never the user's).
-    run_indexed(root, &index, &["add", "-A", "--", "."])?;
+    stage_all(root, &index)?;
     unstage_oversized(root, &index)?;
     unstage_bulk_dirs(root, &index)?;
     let tree = String::from_utf8_lossy(&capture_indexed(root, &index, &["write-tree"])?)
@@ -622,6 +622,55 @@ pub fn commit(root: &Path, message: &str) -> Result<bool, String> {
         .to_string();
     run(root, &["update-ref", &sref, &commit_sha])?;
     Ok(true)
+}
+
+/// Stage everything, working around the one thing `git add -A` refuses to do.
+///
+/// A directory that is itself a git repository WITH commits stages fine (git
+/// records a gitlink). One with NO commits is fatal:
+///
+/// ```text
+/// error: 'projects/Thing/' does not have a commit checked out
+/// fatal: adding files failed
+/// ```
+///
+/// and that is reachable in normal use: creating a project `git init`s its
+/// folder, and its own first commit is skipped whenever there is nothing to
+/// commit yet (a dev build with no bundled harness to seed, say). From then on
+/// EVERY workspace snapshot failed — silently, because snapshots are
+/// best-effort — so the workspace quietly stopped having any file history at
+/// all. Measured on Linux: after one such project appeared, no further snapshot
+/// was ever recorded.
+///
+/// Rather than walk the tree looking for these (expensive on a real workspace),
+/// let git name them and retry once without them. The excluded folder is not
+/// lost: it is a repository, so it keeps its own history.
+fn stage_all(root: &Path, index: &Path) -> Result<(), String> {
+    let Err(first) = run_indexed(root, index, &["add", "-A", "--", "."]) else {
+        return Ok(());
+    };
+    let skip = commitless_repos(&first);
+    if skip.is_empty() {
+        return Err(first);
+    }
+    let mut args: Vec<String> = vec!["add".into(), "-A".into(), "--".into(), ".".into()];
+    args.extend(skip.iter().map(|p| format!(":(exclude){p}")));
+    let argrefs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_indexed(root, index, &argrefs)
+}
+
+/// The paths in git's own complaint about repositories with no commit.
+fn commitless_repos(stderr: &str) -> Vec<String> {
+    stderr
+        .lines()
+        .filter(|l| l.contains("does not have a commit checked out"))
+        .filter_map(|l| {
+            let start = l.find('\'')? + 1;
+            let rest = &l[start..];
+            let end = rest.find('\'')?;
+            Some(rest[..end].trim_end_matches('/').to_string())
+        })
+        .collect()
 }
 
 pub fn commit_best_effort(root: &Path, message: &str) {
@@ -789,8 +838,8 @@ pub fn commit_workspace_snapshot(env: &Env, message: &str) -> Result<bool, Strin
 #[cfg(test)]
 mod tests {
     use super::{
-        commit, current_branch, git_available, rev_parse, snapshot_due, snapshot_ref,
-        SNAPSHOT_DEBOUNCE, SNAPSHOT_MAX_WAIT,
+        commit, commitless_repos, current_branch, git_available, rev_parse, run, snapshot_due,
+        snapshot_ref, SNAPSHOT_DEBOUNCE, SNAPSHOT_MAX_WAIT,
     };
     use std::fs;
     use std::time::Duration;
@@ -835,6 +884,54 @@ mod tests {
         assert_eq!(commit(&root, "Update workspace").unwrap(), true);
         assert!(snapshot_files(&root).contains("AGENTS.md"));
         let _ = fs::remove_dir_all(&root);
+    }
+
+
+    #[test]
+    fn a_project_repo_with_no_commits_does_not_kill_every_later_snapshot() {
+        // Creating a project `git init`s its folder, and its own first commit is
+        // skipped when there is nothing in it yet. `git add -A` then fails hard
+        // on the parent — so from that moment the WORKSPACE silently stopped
+        // being snapshotted at all. Measured on Linux before this fix: one such
+        // project appeared and no further snapshot was ever recorded.
+        if !git_available() {
+            eprintln!("git unavailable; skipping git snapshot test");
+            return;
+        }
+        let root = std::env::temp_dir().join(format!("os-git-nested-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("notes.md"), "first\n").unwrap();
+        assert!(commit(&root, "Initialize workspace").unwrap());
+
+        // A project folder that is a repository with NO commit.
+        let project = root.join("projects").join("Empty");
+        fs::create_dir_all(&project).unwrap();
+        run(&project, &["init"]).expect("init the nested repo");
+        fs::write(project.join("AGENTS.md"), "project rules\n").unwrap();
+
+        // The workspace must still be snapshotted, and the work outside the
+        // project must still be captured.
+        fs::write(root.join("notes.md"), "second\n").unwrap();
+        assert!(
+            commit(&root, "After a project exists").unwrap(),
+            "the workspace stopped being snapshotted once a project existed"
+        );
+        let files = snapshot_files(&root);
+        assert!(files.contains("notes.md"), "{files}");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn git_names_the_repositories_it_refuses_to_stage() {
+        let stderr = "error: 'projects/Empty/' does not have a commit checked out\n                      error: 'sessions/2026-01-01/thing/' does not have a commit checked out\n                      fatal: adding files failed";
+        assert_eq!(
+            commitless_repos(stderr),
+            vec!["projects/Empty".to_string(), "sessions/2026-01-01/thing".to_string()]
+        );
+        // Any other failure is left alone — it is not ours to reinterpret.
+        assert!(commitless_repos("fatal: not a git repository").is_empty());
     }
 
     #[test]

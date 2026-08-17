@@ -1020,6 +1020,10 @@ fn system_proxy_url() -> Option<String> {
 }
 
 /// Parse `scutil --proxy` output (`  Key : value` lines) into a proxy URL.
+/// Compiled where it is reachable — macOS — plus tests everywhere, so the
+/// parser stays covered on any host without warning as dead code on the ones
+/// that never call it. (Same shape as `strip_windows_verbatim`.)
+#[cfg(any(target_os = "macos", test))]
 fn parse_scutil_proxy(text: &str) -> Option<String> {
     let get = |key: &str| -> Option<String> {
         let prefix = format!("{key} : ");
