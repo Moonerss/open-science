@@ -199,7 +199,7 @@ jobs:
         if: always() && runner.os == 'macOS' && env.MACOS_SIGNING_ENABLED == 'true'
         shell: bash
         run: |
-          app_path=$(find "apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print -quit 2>/dev/null || true)
+          app_path=$(find "target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print -quit 2>/dev/null || true)
           if [ -z "$app_path" ]; then
             echo "::warning::No macOS app bundle was produced."
             echo "found=false" >> "$GITHUB_OUTPUT"
@@ -215,7 +215,7 @@ jobs:
 
           archive_dir="$RUNNER_TEMP/macos-submitted-app"
           archive_path="$archive_dir/Open.Science_${version}_${suffix}.submitted.app.zip"
-          dmg_path="$PWD/apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/Open.Science_${version}_${suffix}.dmg"
+          dmg_path="$PWD/target/${{ matrix.target }}/release/bundle/dmg/Open.Science_${version}_${suffix}.dmg"
           mkdir -p "$archive_dir"
           ditto -c -k --keepParent --sequesterRsrc "$app_path" "$archive_path"
 
@@ -263,9 +263,9 @@ jobs:
         with:
           name: ai4s-workbench-${{ matrix.target }}
           path: |
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.rpm
+            target/${{ matrix.target }}/release/bundle/**/*.dmg
+            target/${{ matrix.target }}/release/bundle/**/*.exe
+            target/${{ matrix.target }}/release/bundle/**/*.msi
+            target/${{ matrix.target }}/release/bundle/**/*.deb
+            target/${{ matrix.target }}/release/bundle/**/*.rpm
           if-no-files-found: warn

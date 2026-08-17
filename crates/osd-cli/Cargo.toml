@@ -1,0 +1,16 @@
+[package]
+name = "osd-cli"
+description = "osd — Open Science Desktop without a window: a headless server and a client for it."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "osd"
+path = "src/main.rs"
+
+[dependencies]
+osd-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true

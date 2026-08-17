@@ -2,20 +2,17 @@
 // bundled OpenCode sidecar (isolated config/data + dedicated port; killed on exit).
 mod artifact_file;
 mod browser;
-pub mod browser_mcp_proxy;
 mod debug_log;
 mod examples;
 mod gateway;
 mod git_snapshot;
 mod goal;
-mod harness;
 mod compute;
 mod jupyter;
 mod kernel;
 mod large_file;
 mod modal;
 mod model_probe;
-mod opencode_config;
 mod preview_server;
 mod project;
 mod provenance;
@@ -33,10 +30,36 @@ mod uv;
 
 use jupyter::JupyterState;
 use kernel::KernelState;
+use osd_core::provenance::ProvenanceState;
+use osd_core::runs::RunState;
+use osd_core::Env;
 use preview_server::PreviewState;
-use provenance::ProvenanceState;
-use runtime::RuntimeState;
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
+
+/// The desktop's `Env`, managed once at startup. Every core call goes through
+/// it, and it is a cheap clone (one `Arc`).
+pub struct EnvState(pub Env);
+
+/// The `Env` for this app handle. Panics only if called before `setup` has
+/// managed it, which no command can be.
+pub(crate) fn env_of(app: &AppHandle) -> Env {
+    app.state::<EnvState>().0.clone()
+}
+
+/// Build the `Env` from Tauri's own path resolution, so the desktop and `osd`
+/// agree on where the data and the bundled resources are.
+fn build_env(app: &AppHandle) -> Result<Env, String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    // Resources are resolved by Tauri (it knows the bundle layout on each
+    // platform); the core only ever joins names onto this directory.
+    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    Ok(Env::new(
+        data_dir,
+        resource_dir,
+        app.path().document_dir().ok(),
+        app.package_info().version.to_string(),
+    ))
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -54,16 +77,19 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
-        .manage(RuntimeState::default())
         .manage(KernelState::default())
         .manage(JupyterState::default())
         .manage(PreviewState::default())
         .manage(ProvenanceState::default())
-        .manage(runs::RunState::default())
-        .manage(gateway::GatewayState::default())
+        .manage(RunState::default())
         .manage(ssh_session::SshState::default())
         .manage(acp::AcpState::default())
         .setup(|app| {
+            // Every core call needs this, so nothing else may run before it.
+            app.manage(EnvState(build_env(app.handle())?));
+            // The gateway serves the real frontend, which only a live handle can
+            // resolve — hence built here rather than at `manage` time.
+            app.manage(gateway::state_for(app.handle()));
             // Watch the active workspace so changes made outside the app (an
             // external editor, a detached process) still enqueue a debounced
             // snapshot. Re-pointed on every workspace switch in set_workspace.
@@ -210,10 +236,10 @@ pub fn run() {
             // cleanup is idempotent, so running on both is safe.
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
                 browser::close_agent_browser_on_exit();
-                runtime::kill_child(&app.state::<RuntimeState>());
+                runtime::kill_child(env_of(app).runtime());
                 kernel::kill_kernel(&app.state::<KernelState>());
                 jupyter::kill_jupyter(&app.state::<JupyterState>());
-                gateway::shutdown(app.state::<gateway::GatewayState>().inner());
+                gateway::shutdown(app, app.state::<osd_core::gateway::GatewayState>().inner());
                 // An authenticated ssh channel must not outlive the app that
                 // opened it (#73) — the master lives past our exit otherwise.
                 ssh_session::shutdown(app);
