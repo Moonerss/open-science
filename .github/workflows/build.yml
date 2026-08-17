@@ -205,6 +205,10 @@ jobs:
         run: |
           set -euo pipefail
           archive=$(bash scripts/release/package-osd.sh "${{ matrix.target }}" | tail -1)
+          # Hand the next step a WORKSPACE-RELATIVE path. `upload-artifact` is a
+          # Node action, and on Windows it cannot resolve the MSYS path this
+          # shell speaks (/d/a/…), so an absolute one uploads nothing at all.
+          archive="${archive#"$PWD/"}"
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
           ls -la "$archive"
 
