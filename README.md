@@ -243,8 +243,8 @@ sudo rpm -i Open.Science-*.rpm
 ## Headless & CLI (`osd`)
 
 A research machine usually has no screen. `osd` is the same workbench without
-one: the same workspace layout, the same agent runtime, the same projects and
-provenance, and the same web UI — served over HTTP instead of drawn in a window.
+one: the same workspace layout, the same agent runtime, the same projects, and
+the same web UI — served over HTTP instead of drawn in a window.
 
 ```bash
 # On the server (unpack the osd-<version>-<target> archive from Releases)
@@ -276,8 +276,11 @@ just works. Otherwise point it anywhere with `osd login --gateway <url> --token
 <token>`.
 
 What is *not* there without a desktop: local Jupyter kernels, native file
-dialogs, and the OS file manager. The web UI hides those rather than offering
-controls that would fail.
+dialogs, and the OS file manager — the web UI hides those rather than offering
+controls that would fail. Two more are worth knowing: **provenance and run
+records are written by the desktop client**, so a headless server keeps the
+workspace's file history through git snapshots but does not append to
+`provenance.jsonl` or the run index.
 
 ## Build from source
 

@@ -166,7 +166,7 @@ Unter Windows in SmartScreen **More info -> Run anyway** wählen.
 
 ## Headless & CLI (`osd`)
 
-Eine Forschungsmaschine hat meist keinen Bildschirm. `osd` ist dieselbe Workbench ohne einen: dasselbe Workspace-Layout, dieselbe Agent-Runtime, dieselben Projekte und Provenienz, dieselbe Web-UI — nur über HTTP ausgeliefert statt in ein Fenster gezeichnet.
+Eine Forschungsmaschine hat meist keinen Bildschirm. `osd` ist dieselbe Workbench ohne einen: dasselbe Workspace-Layout, dieselbe Agent-Runtime, dieselben Projekte, dieselbe Web-UI — nur über HTTP ausgeliefert statt in ein Fenster gezeichnet.
 
 ```bash
 # On the server (unpack the osd-<version>-<target> archive from Releases)
@@ -189,7 +189,7 @@ osd fs get report.md --output ./report.md
 
 Ohne `--gateway` spricht `osd` mit einem Gateway, das auf derselben Maschine bereits läuft — auch dem der Desktop-App. Ist die App offen, funktioniert `osd session ls` also einfach. Sonst zeigt `osd login --gateway <url> --token <token>` auf beliebige Instanzen.
 
-Was ohne Desktop *fehlt*: lokale Jupyter-Kernel, native Dateidialoge und der Dateimanager des Systems. Die Web-UI blendet diese aus, statt Bedienelemente anzubieten, die scheitern würden.
+Was ohne Desktop *fehlt*: lokale Jupyter-Kernel, native Dateidialoge und der Dateimanager des Systems — die Web-UI blendet diese aus, statt Bedienelemente anzubieten, die scheitern würden. Zwei weitere Punkte: **Provenienz- und Run-Einträge schreibt der Desktop-Client**, ein Headless-Server hält die Dateihistorie also über Git-Snapshots, schreibt aber nicht in `provenance.jsonl` oder den Run-Index.
 
 ## Aus dem Quellcode bauen
 

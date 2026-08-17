@@ -166,7 +166,7 @@ Sous Windows, choisissez **More info -> Run anyway** dans SmartScreen.
 
 ## Sans écran & CLI (`osd`)
 
-Une machine de recherche n'a en général pas d'écran. `osd`, c'est le même atelier sans écran : même organisation du workspace, même runtime d'agent, mêmes projets et même provenance, même UI web — servie en HTTP au lieu d'être dessinée dans une fenêtre.
+Une machine de recherche n'a en général pas d'écran. `osd`, c'est le même atelier sans écran : même organisation du workspace, même runtime d'agent, mêmes projets, même UI web — servie en HTTP au lieu d'être dessinée dans une fenêtre.
 
 ```bash
 # On the server (unpack the osd-<version>-<target> archive from Releases)
@@ -189,7 +189,7 @@ osd fs get report.md --output ./report.md
 
 Sans `--gateway`, `osd` parle à une passerelle déjà lancée sur la même machine — y compris celle de l'app de bureau : app ouverte, `osd session ls` fonctionne tel quel. Sinon, pointez-le où vous voulez avec `osd login --gateway <url> --token <token>`.
 
-Ce qui *manque* sans bureau : les kernels Jupyter locaux, les dialogues de fichiers natifs et le gestionnaire de fichiers du système. L'UI web les masque au lieu de proposer des commandes vouées à l'échec.
+Ce qui *manque* sans bureau : les kernels Jupyter locaux, les dialogues de fichiers natifs et le gestionnaire de fichiers du système — l'UI web les masque au lieu de proposer des commandes vouées à l'échec. Deux points de plus : **la provenance et les enregistrements d'exécution sont écrits par le client de bureau** ; un serveur sans écran conserve donc l'historique des fichiers via les snapshots git, mais n'ajoute rien à `provenance.jsonl` ni à l'index des exécutions.
 
 ## Construire depuis le code source
 

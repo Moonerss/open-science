@@ -166,7 +166,7 @@ En Windows, usa **More info -> Run anyway** en SmartScreen.
 
 ## Sin pantalla y CLI (`osd`)
 
-Una máquina de investigación normalmente no tiene pantalla. `osd` es el mismo banco de trabajo sin ella: la misma organización del workspace, el mismo runtime del agente, los mismos proyectos y procedencia, y la misma UI web — servida por HTTP en lugar de dibujada en una ventana.
+Una máquina de investigación normalmente no tiene pantalla. `osd` es el mismo banco de trabajo sin ella: la misma organización del workspace, el mismo runtime del agente, los mismos proyectos y la misma UI web — servida por HTTP en lugar de dibujada en una ventana.
 
 ```bash
 # On the server (unpack the osd-<version>-<target> archive from Releases)
@@ -189,7 +189,7 @@ osd fs get report.md --output ./report.md
 
 Sin `--gateway`, `osd` habla con un gateway que ya esté corriendo en la misma máquina — incluido el de la app de escritorio — así que con la app abierta, `osd session ls` funciona sin más. Si no, apúntalo a donde quieras con `osd login --gateway <url> --token <token>`.
 
-Lo que *no* hay sin escritorio: kernels locales de Jupyter, diálogos de archivo nativos y el gestor de archivos del sistema. La UI web los oculta en lugar de ofrecer controles que fallarían.
+Lo que *no* hay sin escritorio: kernels locales de Jupyter, diálogos de archivo nativos y el gestor de archivos del sistema — la UI web los oculta en lugar de ofrecer controles que fallarían. Dos cosas más: **la procedencia y los registros de ejecución los escribe el cliente de escritorio**, así que un servidor sin pantalla conserva el historial de archivos vía snapshots de git, pero no añade a `provenance.jsonl` ni al índice de ejecuciones.
 
 ## Compilar desde el código
 

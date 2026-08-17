@@ -28,8 +28,7 @@ pub fn run(args: &Args) -> Result<(), String> {
         } else {
             std::env::current_dir().map_err(|e| e.to_string())?.join(path)
         };
-        let chosen = runtime::set_workspace(&env, absolute.to_string_lossy().to_string())?;
-        osd_core::git_snapshot::watch_workspace(std::path::Path::new(&chosen));
+        runtime::set_workspace(&env, absolute.to_string_lossy().to_string())?;
     }
 
     // Bind first, config second: everything below is written to disk, and a
@@ -76,6 +75,16 @@ pub fn run(args: &Args) -> Result<(), String> {
              harness will be missing. Point at them with --resources.",
             env.resource_dir().display()
         );
+    }
+
+    // Watch the active folder for changes made outside this process — which,
+    // headless, is nearly all of them: the agent's own writes go through
+    // OpenCode's tools, not ours. Without this the workspace gets no git
+    // history at all here, since the per-write snapshot is driven by the
+    // desktop client (see the provenance note in the README).
+    match runtime::workspace_dir(&env) {
+        Ok(dir) => osd_core::git_snapshot::watch_workspace(&dir),
+        Err(e) => eprintln!("note: could not watch the workspace for changes: {e}"),
     }
 
     // The sidecar first, so the gateway never answers a request with "runtime

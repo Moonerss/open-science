@@ -166,7 +166,7 @@ Windows에서는 SmartScreen에서 **More info -> Run anyway**를 선택합니�
 
 ## 헤드리스와 CLI(`osd`)
 
-연구용 머신에는 대개 화면이 없습니다. `osd`는 화면이 없는 같은 워크벤치입니다. 워크스페이스 구조도, 에이전트 런타임도, 프로젝트와 출처 기록도, 웹 UI도 동일하며 — 창에 그리는 대신 HTTP로 제공될 뿐입니다.
+연구용 머신에는 대개 화면이 없습니다. `osd`는 화면이 없는 같은 워크벤치입니다. 워크스페이스 구조도, 에이전트 런타임도, 프로젝트도, 웹 UI도 동일하며 — 창에 그리는 대신 HTTP로 제공될 뿐입니다.
 
 ```bash
 # On the server (unpack the osd-<version>-<target> archive from Releases)
@@ -189,7 +189,7 @@ osd fs get report.md --output ./report.md
 
 `--gateway`를 지정하지 않으면 `osd`는 같은 머신에서 이미 실행 중인 게이트웨이(데스크톱 앱의 것 포함)에 연결합니다. 즉 앱이 켜져 있으면 `osd session ls`가 바로 동작합니다. 그 외에는 `osd login --gateway <url> --token <token>`으로 어디든 지정하세요.
 
-데스크톱이 없을 때 *없는* 기능: 로컬 Jupyter 커널, 네이티브 파일 대화상자, OS 파일 관리자. 웹 UI는 실패할 컨트롤을 보여주는 대신 숨깁니다.
+데스크톱이 없을 때 *없는* 기능: 로컬 Jupyter 커널, 네이티브 파일 대화상자, OS 파일 관리자 — 웹 UI는 실패할 컨트롤을 보여주는 대신 숨깁니다. 두 가지 더: **출처 기록과 실행 기록은 데스크톱 클라이언트가 씁니다.** 헤드리스 서버는 git 스냅샷으로 워크스페이스 파일 이력은 남기지만 `provenance.jsonl`과 실행 인덱스에는 추가하지 않습니다.
 
 ## 소스에서 빌드
 
