@@ -98,6 +98,26 @@ fn write_persisted(env: &Env, p: &Persisted) -> Result<(), String> {
     Ok(())
 }
 
+/// The gateway token for this machine, minting and storing one if there is none.
+///
+/// The token is shared on purpose: the desktop app and `osd server` are two
+/// front doors to ONE runtime root, and a client that was handed a token by
+/// either must be able to use it against the other. Nothing else in the
+/// persisted record is touched — enabled/LAN/mode are the desktop's settings,
+/// and running a headless server for an afternoon must not rewrite them.
+pub fn ensure_token(env: &Env, requested: Option<String>) -> Result<String, String> {
+    let mut p = read_persisted(env);
+    match requested {
+        Some(t) if t.trim().is_empty() => return Err("the token cannot be empty".into()),
+        Some(t) if t != p.token => p.token = t,
+        Some(t) => return Ok(t),
+        None if !p.token.is_empty() => return Ok(p.token),
+        None => p.token = random_hex(24),
+    }
+    write_persisted(env, &p)?;
+    Ok(p.token)
+}
+
 fn normalize_mode(m: &str) -> String {
     if m == "read-only" { "read-only".into() } else { "full".into() }
 }
@@ -212,15 +232,32 @@ impl Ctx {
 
 // ---- lifecycle --------------------------------------------------------------
 
-fn bind_listener(lan: bool) -> std::io::Result<TcpListener> {
+/// `requested` is an explicit port the caller must have (`osd server --port`):
+/// if it is taken, that is an error, because falling back to another port would
+/// leave every script pointed somewhere nothing is listening. With no explicit
+/// port we prefer the well-known one and accept any free port if it is taken.
+fn bind_listener(lan: bool, requested: Option<u16>) -> std::io::Result<TcpListener> {
     let host = if lan { "0.0.0.0" } else { "127.0.0.1" };
-    match TcpListener::bind((host, PREFERRED_PORT)) {
-        Ok(l) => Ok(l),
-        Err(_) => TcpListener::bind((host, 0)),
+    match requested {
+        Some(port) => TcpListener::bind((host, port)),
+        None => match TcpListener::bind((host, PREFERRED_PORT)) {
+            Ok(l) => Ok(l),
+            Err(_) => TcpListener::bind((host, 0)),
+        },
     }
 }
 
 pub fn start(env: &Env, state: &GatewayState, p: &Persisted) -> Result<u16, String> {
+    start_at(env, state, p, None)
+}
+
+/// `start`, with an explicit port the caller insists on. See `bind_listener`.
+pub fn start_at(
+    env: &Env,
+    state: &GatewayState,
+    p: &Persisted,
+    requested: Option<u16>,
+) -> Result<u16, String> {
     // An empty token would make `ct_eq` accept `Authorization: Bearer ` (also
     // empty) — i.e. no auth at all on an off-loopback listener. Callers mint one
     // before enabling; refuse here too rather than trust every caller to.
@@ -228,7 +265,11 @@ pub fn start(env: &Env, state: &GatewayState, p: &Persisted) -> Result<u16, Stri
         return Err("gateway token is not set".into());
     }
     stop(env, state);
-    let listener = bind_listener(p.lan).map_err(|e| format!("gateway bind failed: {e}"))?;
+    let listener = bind_listener(p.lan, requested)
+        .map_err(|e| match requested {
+            Some(port) => format!("port {port} is not available: {e}"),
+            None => format!("gateway bind failed: {e}"),
+        })?;
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     let stop_flag = Arc::new(AtomicBool::new(false));
@@ -316,7 +357,7 @@ impl Request {
         let mut reader = BufReader::new(stream.try_clone().ok()?);
         let mut line = String::new();
         reader.read_line(&mut line).ok()?;
-        let mut parts = line.trim_end().split_whitespace();
+        let mut parts = line.split_whitespace();
         let method = parts.next()?.to_string();
         let target = parts.next()?.to_string();
         let (path, query) = match target.split_once('?') {
@@ -485,9 +526,25 @@ fn v1(stream: &mut TcpStream, req: &Request, ctx: &Ctx, rest: &str) {
         ("GET", ["sessions"]) => {
             forward(stream, upstream_get(ctx, "/experimental/session", &[]));
         }
+        // `directory` names the folder the session belongs to — a project's
+        // workspace, typically. Without it a client could only ever create in
+        // whatever folder the host happens to be on, which is no basis for
+        // scripting anything (and is the same root cause as #81).
         ("POST", ["sessions"]) => {
-            let ws = ws_dir(ctx);
-            if forward(stream, upstream_post(ctx, "/session", &[("directory", &ws)], "{}")) {
+            let dir = match json_str_field(&req.body, "directory") {
+                Some(d) if !d.trim().is_empty() => match session_dir(ctx, d.trim()) {
+                    Ok(d) => d,
+                    Err(e) => return respond_json(stream, 400, &err_json(&e)),
+                },
+                _ => ws_dir(ctx),
+            };
+            let body = match json_str_field(&req.body, "title") {
+                Some(t) if !t.trim().is_empty() => {
+                    serde_json::json!({ "title": t.trim() }).to_string()
+                }
+                _ => "{}".to_string(),
+            };
+            if forward(stream, upstream_post(ctx, "/session", &[("directory", &dir)], &body)) {
                 ctx.sessions_changed();
             }
         }
@@ -499,15 +556,45 @@ fn v1(stream: &mut TcpStream, req: &Request, ctx: &Ctx, rest: &str) {
         ("GET", ["sessions", id, "messages"]) => {
             forward(stream, upstream_get(ctx, &format!("/session/{}/message", enc(id)), &[]));
         }
+        // `model` ("provider/model") and `agent` are what make a scripted run
+        // reproducible: without them the turn silently inherits whatever the
+        // session was created with, which a script cannot see or state.
         ("POST", ["sessions", id, "prompt"]) => {
             let text = json_str_field(&req.body, "text").unwrap_or_default();
             if text.trim().is_empty() {
                 respond_json(stream, 400, "{\"error\":\"missing text\"}");
                 return;
             }
-            let body = serde_json::json!({ "parts": [{ "type": "text", "text": text }] }).to_string();
-            forward(stream, upstream_post(ctx, &format!("/session/{}/prompt_async", enc(id)), &[], &body));
+            let mut body = serde_json::json!({ "parts": [{ "type": "text", "text": text }] });
+            let map = body.as_object_mut().expect("object literal");
+            if let Some(agent) = json_str_field(&req.body, "agent").filter(|a| !a.is_empty()) {
+                map.insert("agent".into(), serde_json::Value::String(agent));
+            }
+            if let Some(model) = json_str_field(&req.body, "model").filter(|m| !m.is_empty()) {
+                match split_model(&model) {
+                    Some(m) => {
+                        map.insert("model".into(), m);
+                    }
+                    None => {
+                        return respond_json(
+                            stream,
+                            400,
+                            &err_json("model must be written provider/model, e.g. anthropic/claude-sonnet-4-5"),
+                        )
+                    }
+                }
+            }
+            if let Some(variant) = json_str_field(&req.body, "variant").filter(|v| !v.is_empty()) {
+                map.insert("variant".into(), serde_json::Value::String(variant));
+            }
+            forward(
+                stream,
+                upstream_post(ctx, &format!("/session/{}/prompt_async", enc(id)), &[], &body.to_string()),
+            );
         }
+        // Whether a turn is still running. `prompt` returns as soon as the turn
+        // is ACCEPTED, so without this there is nothing for a script to wait on.
+        ("GET", ["sessions", id, "status"]) => session_status(stream, ctx, id),
         ("POST", ["sessions", id, "abort"]) => {
             forward(stream, upstream_post(ctx, &format!("/session/{}/abort", enc(id)), &[], "{}"));
         }
@@ -543,6 +630,23 @@ fn v1(stream: &mut TcpStream, req: &Request, ctx: &Ctx, rest: &str) {
             Ok(list) => respond_json(stream, 200, &serde_json::to_string(&list).unwrap_or_else(|_| "[]".into())),
             Err(e) => respond_json(stream, 500, &err_json(&e)),
         },
+        // Creating a project is a folder + metadata + the agent harness — no
+        // window needed, and a CLI that can create sessions but not the project
+        // to put them in is only half a tool.
+        ("POST", ["projects"]) => {
+            let name = json_str_field(&req.body, "name").unwrap_or_default();
+            if name.trim().is_empty() {
+                return respond_json(stream, 400, &err_json("missing name"));
+            }
+            match crate::project::create_project(&ctx.env, name.trim()) {
+                Ok(info) => respond_json(
+                    stream,
+                    200,
+                    &serde_json::to_string(&info).unwrap_or_else(|_| "{}".into()),
+                ),
+                Err(e) => respond_json(stream, 400, &err_json(&e)),
+            }
+        }
         ("GET", ["runs"]) => match crate::runs::list_runs(&ctx.env) {
             Ok(list) => respond_json(stream, 200, &serde_json::to_string(&list).unwrap_or_else(|_| "[]".into())),
             Err(e) => respond_json(stream, 500, &err_json(&e)),
@@ -581,6 +685,81 @@ fn v1(stream: &mut TcpStream, req: &Request, ctx: &Ctx, rest: &str) {
         }
         _ => respond_json(stream, 404, "{\"error\":\"not found\"}"),
     }
+}
+
+/// Split "provider/model" into the `{providerID, modelID}` OpenCode expects.
+/// None when there is no separator, or either half is empty — a typo must be
+/// reported, never silently dropped into a default model.
+fn split_model(model: &str) -> Option<serde_json::Value> {
+    let (provider, id) = model.split_once('/')?;
+    if provider.is_empty() || id.is_empty() {
+        return None;
+    }
+    Some(serde_json::json!({ "providerID": provider, "modelID": id }))
+}
+
+/// Validate a caller-supplied session directory. Same rule as file access: it
+/// must sit under the base workspace, or BE a registered project's own folder
+/// (an in-place import lives outside the base). Anything else is refused —
+/// creating a session elsewhere would point the agent at an arbitrary path.
+fn session_dir(ctx: &Ctx, dir: &str) -> Result<String, String> {
+    let canon = PathBuf::from(dir)
+        .canonicalize()
+        .map_err(|_| format!("{dir} does not exist"))?;
+    if !canon.is_dir() {
+        return Err(format!("{dir} is not a folder"));
+    }
+    let base = crate::runtime::base_workspace_dir(&ctx.env)?
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    if canon.starts_with(&base) || crate::project::is_registered_project_path(&ctx.env, &canon) {
+        return Ok(crate::artifact_file::native_path(&canon));
+    }
+    Err("directory is outside the workspace".into())
+}
+
+/// Is this session's last turn still running?
+///
+/// A turn in flight and a turn whose runtime died mid-stream persist
+/// IDENTICALLY — an assistant message with a `created` and no `completed` — so
+/// the sidecar's own start time is what separates them: a message written
+/// before the current process began cannot be something it is still producing.
+/// (Same reasoning as the desktop's `turnStillStreaming`; see PROGRESS
+/// 2026-08-15.) A client that gets this wrong waits forever on a dead turn.
+fn turn_is_running(last: Option<&serde_json::Value>, runtime_started_at: u64) -> bool {
+    last.is_some_and(|info| {
+        info.get("role").and_then(|r| r.as_str()) == Some("assistant")
+            && info.get("error").is_none_or(|e| e.is_null())
+            && info.get("time").and_then(|t| t.get("completed")).is_none()
+            && info
+                .get("time")
+                .and_then(|t| t.get("created"))
+                .and_then(|c| c.as_u64())
+                .is_some_and(|created| created >= runtime_started_at)
+    })
+}
+
+fn session_status(stream: &mut TcpStream, ctx: &Ctx, id: &str) {
+    let resp = upstream_get(ctx, &format!("/session/{}/message", enc(id)), &[]);
+    let body = match resp {
+        Ok(r) if r.status().is_success() => r.bytes().map(|b| b.to_vec()).unwrap_or_default(),
+        Ok(r) => {
+            let status = r.status().as_u16();
+            return respond_json(stream, status, &err_json("session not found"));
+        }
+        Err(e) => return respond_json(stream, 502, &err_json(&format!("upstream: {e}"))),
+    };
+    let messages: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap_or_default();
+    let last = messages.last().map(|m| m.get("info").unwrap_or(m));
+    let started_at = crate::runtime::runtime_started_at(ctx.env.runtime()).unwrap_or(0);
+    let working = turn_is_running(last, started_at);
+    let payload = serde_json::json!({
+        "state": if working { "working" } else { "idle" },
+        "messages": messages.len(),
+        "lastRole": last.and_then(|i| i.get("role").and_then(|r| r.as_str())),
+        "lastError": last.and_then(|i| i.get("error").filter(|e| !e.is_null()).cloned()),
+    });
+    respond_json(stream, 200, &payload.to_string());
 }
 
 /// Serve the SPA shell (`index.html`) with a marker so it boots in web mode.
@@ -1357,6 +1536,50 @@ mod tests {
         let sep = buf.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
         let body_len = buf.len() - (sep + 4);
         assert_eq!(body_len, expected, "body truncated: got {body_len} of {expected}");
+    }
+
+    #[test]
+    fn model_must_be_written_provider_slash_model() {
+        let m = split_model("anthropic/claude-sonnet-4-5").expect("a well-formed model");
+        assert_eq!(m["providerID"], "anthropic");
+        assert_eq!(m["modelID"], "claude-sonnet-4-5");
+        // A model id may itself contain slashes (openrouter names do).
+        let m = split_model("openrouter/qwen/qwen3-coder").expect("nested model id");
+        assert_eq!(m["providerID"], "openrouter");
+        assert_eq!(m["modelID"], "qwen/qwen3-coder");
+        // A typo must be reported, never silently answered by another model.
+        assert!(split_model("claude-sonnet-4-5").is_none());
+        assert!(split_model("/claude").is_none());
+        assert!(split_model("anthropic/").is_none());
+    }
+
+    #[test]
+    fn a_turn_that_died_with_the_runtime_is_not_still_running() {
+        // A turn in flight and a turn whose sidecar died persist identically;
+        // only the runtime's start time separates them.
+        let streaming = serde_json::json!({ "role": "assistant", "time": { "created": 2_000u64 } });
+        assert!(turn_is_running(Some(&streaming), 1_000));
+        // Same shape, but written before this sidecar existed → dead, not live.
+        assert!(!turn_is_running(Some(&streaming), 3_000));
+
+        let done = serde_json::json!({
+            "role": "assistant",
+            "time": { "created": 2_000u64, "completed": 2_500u64 }
+        });
+        assert!(!turn_is_running(Some(&done), 1_000));
+
+        let failed = serde_json::json!({
+            "role": "assistant",
+            "error": { "name": "ProviderError" },
+            "time": { "created": 2_000u64 }
+        });
+        assert!(!turn_is_running(Some(&failed), 1_000));
+
+        // The user's own message is never a running turn, and neither is an
+        // empty session.
+        let user = serde_json::json!({ "role": "user", "time": { "created": 2_000u64 } });
+        assert!(!turn_is_running(Some(&user), 1_000));
+        assert!(!turn_is_running(None, 1_000));
     }
 
     #[test]

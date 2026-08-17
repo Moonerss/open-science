@@ -11,6 +11,10 @@ path = "src/main.rs"
 
 [dependencies]
 osd-core.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 reqwest.workspace = true
+
+# Unix only, and only for one thing: a SIGTERM handler, so a supervisor
+# stopping `osd server` also stops the OpenCode sidecar instead of orphaning it.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

@@ -2805,9 +2805,9 @@ dependencies = [
 name = "osd-cli"
 version = "0.4.2"
 dependencies = [
+ "libc",
  "osd-core",
  "reqwest",
- "serde",
  "serde_json",
 ]
 

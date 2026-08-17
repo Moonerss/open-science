@@ -1191,7 +1191,7 @@ fn spawn_sidecar(env: &Env, port: u16, generation: u64) -> Result<Child, String>
         // Lets bundled skill helpers (e.g. remote-compute's record_run.py) stamp
         // the recording app version into provenance — they run outside the app
         // and can't otherwise know it.
-        .env("OPENSCIENCE_APP_VERSION", env.version().to_string())
+        .env("OPENSCIENCE_APP_VERSION", env.version())
         // GUI-launched apps get a minimal PATH; give the agent the user's real tools.
         .env("PATH", enriched_path())
         .current_dir(workspace)
@@ -2237,6 +2237,36 @@ pub fn configure_opencode(
     // Restart so the running server reloads the new provider config.
     Ok(restart_sidecar_if_running(env)?
         .unwrap_or_else(|| path.to_string_lossy().to_string()))
+}
+
+/// Which providers this machine has credentials for: the ones written into the
+/// app-private config, plus the ones OpenCode's own credential store holds from
+/// a browser login. NAMES ONLY — no key value is ever returned, printed, or
+/// logged by anything (AGENTS.md).
+pub fn configured_providers(env: &Env) -> Result<Vec<String>, String> {
+    let mut names: Vec<String> = Vec::new();
+    let config = std::fs::read_to_string(effective_config_file(env)?).unwrap_or_default();
+    if let Some(map) = crate::opencode_config::read_config(&config)
+        .as_ref()
+        .and_then(|v| v.get("provider"))
+        .and_then(|p| p.as_object())
+    {
+        names.extend(map.keys().cloned());
+    }
+    let auth = std::fs::read_to_string(
+        xdg_data_home(env)?.join("opencode").join("auth.json"),
+    )
+    .unwrap_or_default();
+    if let Some(map) = serde_json::from_str::<serde_json::Value>(&auth)
+        .ok()
+        .as_ref()
+        .and_then(|v| v.as_object())
+    {
+        names.extend(map.keys().cloned());
+    }
+    names.sort();
+    names.dedup();
+    Ok(names)
 }
 
 #[cfg(test)]

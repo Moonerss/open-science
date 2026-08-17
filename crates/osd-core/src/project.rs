@@ -591,7 +591,7 @@ pub fn rename_project(env: &Env, id: &str, name: &str) -> Result<(), String> {
         return Err("project name is empty".into());
     }
     let base = base_workspace_dir(env)?;
-    let dir = project_dir_by_id(&base, &id).ok_or("project not found")?;
+    let dir = project_dir_by_id(&base, id).ok_or("project not found")?;
     let mut meta = read_meta(&dir).ok_or("not a project folder")?;
     meta.name = name.to_string();
     write_meta(&dir, &meta)

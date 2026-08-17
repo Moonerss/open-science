@@ -1,0 +1,61 @@
+// `osd auth` — provider credentials, written where the agent runtime reads them.
+//
+// This is the ONE command that never goes through the gateway. An API key must
+// not cross the network (AGENTS.md), and the gateway enforces that by refusing
+// every config write and redacting every config read — so on a headless box the
+// key is set HERE, on the machine that will use it, and stays there. The other
+// way in is the environment: the sidecar inherits this process's environment, so
+// `ANTHROPIC_API_KEY=… osd server` works with nothing written to disk at all,
+// which is what a container or a systemd unit wants.
+use osd_core::runtime;
+
+use crate::args::Args;
+
+pub fn run(args: &Args) -> Result<(), String> {
+    match args.sub.as_str() {
+        "set" | "login" => set(args),
+        "ls" | "list" => list(args),
+        "" => Err("usage: osd auth set <provider> --key <api-key> [--model <provider/model>]".into()),
+        other => Err(format!("unknown command `osd auth {other}`")),
+    }
+}
+
+fn set(args: &Args) -> Result<(), String> {
+    let provider = args.at(0, "provider")?;
+    // Reading the key from the environment keeps it out of the shell history,
+    // which is where a pasted `--key` would otherwise live forever.
+    let key = match args.value("key") {
+        Some(k) => k,
+        None => std::env::var("OSD_API_KEY").map_err(|_| {
+            "no key: pass --key <api-key>, or set OSD_API_KEY to keep it out of your \
+             shell history"
+                .to_string()
+        })?,
+    };
+    if key.trim().is_empty() {
+        return Err("the API key is empty".into());
+    }
+    let env = crate::env(args)?;
+    let model = args.value("model").unwrap_or_default();
+    runtime::configure_opencode(&env, provider.clone(), key, model, args.value("base-url"))?;
+    println!("Saved the {provider} key for this machine.");
+    if args.value("model").is_none() {
+        println!("Pick a default model with --model <provider/model>, or per turn with `osd session send --model`.");
+    }
+    Ok(())
+}
+
+fn list(args: &Args) -> Result<(), String> {
+    let env = crate::env(args)?;
+    let providers = runtime::configured_providers(&env)?;
+    if providers.is_empty() {
+        println!("No providers configured. Set one with `osd auth set <provider> --key <api-key>`,");
+        println!("or export its API key before starting the server — the runtime inherits it.");
+        return Ok(());
+    }
+    // Names only. The keys themselves are never printed, by anything, ever.
+    for p in providers {
+        println!("{p}");
+    }
+    Ok(())
+}

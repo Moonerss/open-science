@@ -545,7 +545,7 @@ fn parse_config(existing: &str) -> Result<Value, String> {
 /// logged rather than swallowed: leaving the config alone is the safe choice,
 /// but a config the app can no longer edit stops every later repair silently —
 /// including the plugin registration the browser lease depends on (#116).
-fn read_config(existing: &str) -> Option<Value> {
+pub(crate) fn read_config(existing: &str) -> Option<Value> {
     match parse_config(existing) {
         Ok(value) => Some(value),
         Err(error) => {
