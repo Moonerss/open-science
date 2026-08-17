@@ -201,6 +201,9 @@ fn expand_env_vars(raw: &str) -> String {
     out
 }
 
+/// Not compiled on Windows, which asks the registry instead — otherwise every
+/// Windows build warns it is dead code.
+#[cfg(not(windows))]
 fn xdg_documents_dir() -> Option<PathBuf> {
     let config = match std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
         Some(v) => PathBuf::from(v),
