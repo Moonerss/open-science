@@ -259,9 +259,18 @@ your laptop:
 ```bash
 osd project new "Reef survey"
 id=$(osd session new --project "Reef survey")
-osd session send "$id" "Fit the 2015–2024 bleaching trend and write report.md"     --model anthropic/claude-sonnet-4-5 --wait
+osd session send "$id" "Fit the 2015–2024 bleaching trend and write report.md" \
+    --model anthropic/claude-sonnet-4-5 --wait
 osd fs ls figures/
 osd fs get report.md --output ./report.md
+```
+
+On Windows the same commands work in PowerShell; only the shell's own syntax
+differs:
+
+```powershell
+$id = osd session new --project "Reef survey"
+osd session send $id "Fit the 2015-2024 bleaching trend and write report.md" --wait
 ```
 
 `--wait` returns when the turn is finished, not when it was accepted, and fails

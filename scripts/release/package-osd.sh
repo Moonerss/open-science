@@ -22,7 +22,12 @@ set -euo pipefail
 target="${1:?usage: package-osd.sh <rust-target> [output-dir]}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 out_dir="${2:-$root/dist-osd}"
-version="$(node -p "require('$root/apps/desktop/src-tauri/tauri.conf.json').version")"
+# A RELATIVE path on purpose: under Git Bash (which is what the Windows CI leg
+# runs), `$root` is a POSIX path like /d/a/repo, and MSYS only translates those
+# when they are whole arguments — inside a JS string it reaches node unchanged
+# and `require` fails. Measured on Windows 11: the absolute form errors, the
+# relative form returns the version.
+version="$(cd "$root" && node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
 
 ext=""
 case "$target" in *windows*) ext=".exe" ;; esac
@@ -105,8 +110,16 @@ case "$target" in
     elif command -v 7z > /dev/null 2>&1; then
       (cd "$out_dir" && 7z a -bso0 -bsp0 "$(basename "$archive").zip" "$(basename "$stage")" > /dev/null)
     else
+      # PowerShell cannot resolve a POSIX path either (measured: Compress-Archive
+      # with /c/... silently produces nothing), so hand it Windows paths.
+      src="$stage"
+      dst="$archive.zip"
+      if command -v cygpath > /dev/null 2>&1; then
+        src="$(cygpath -w "$stage")"
+        dst="$(cygpath -w "$archive.zip")"
+      fi
       powershell.exe -NoProfile -NonInteractive -Command \
-        "Compress-Archive -Path '$stage' -DestinationPath '$archive.zip' -Force"
+        "Compress-Archive -Path '$src' -DestinationPath '$dst' -Force"
     fi
     [ -f "$archive.zip" ] || { echo "could not create $archive.zip" >&2; exit 1; }
     echo "$archive.zip"

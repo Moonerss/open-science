@@ -223,6 +223,13 @@ osd fs ls figures/
 osd fs get report.md --output ./report.md
 ```
 
+Windows 上同样的命令在 PowerShell 里可用，只是 shell 语法不同：
+
+```powershell
+$id = osd session new --project "Reef survey"
+osd session send $id "Fit the 2015-2024 bleaching trend and write report.md" --wait
+```
+
 `--wait` 在这一轮真正跑完时才返回，而不是在被接受时；如果这一轮什么都没答，它会明确报错。`--json` 输出接口原样的响应，供脚本解析。审批规则依然生效——智能体执行命令前仍会询问，没有窗口时就用 `osd permission ls` / `osd permission allow <id>` 来回答。
 
 不指定 `--gateway` 时，`osd` 会连上本机已经在跑的网关——包括桌面应用自己的那个——所以只要应用开着，`osd session ls` 直接就能用。否则用 `osd login --gateway <url> --token <token>` 指向任意一台。

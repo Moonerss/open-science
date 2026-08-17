@@ -185,6 +185,13 @@ osd fs ls figures/
 osd fs get report.md --output ./report.md
 ```
 
+Windows でも同じコマンドが PowerShell で動きます。違うのはシェルの構文だけです:
+
+```powershell
+$id = osd session new --project "Reef survey"
+osd session send $id "Fit the 2015-2024 bleaching trend and write report.md" --wait
+```
+
 `--wait` はターンが受理された時点ではなく、実際に終わった時点で戻ります。返答が何も出なかった場合は明確に失敗します。`--json` は API の応答そのものを出力するのでスクリプト向きです。承認は引き続き有効です — エージェントはコマンド実行前に尋ねますし、ウィンドウがない環境では `osd permission ls` / `osd permission allow <id>` で答えます。
 
 `--gateway` を指定しない場合、`osd` は同じマシンで動いているゲートウェイ（デスクトップアプリのものを含む）に接続します。つまりアプリを開いていれば `osd session ls` はそのまま動きます。それ以外は `osd login --gateway <url> --token <token>` で任意の接続先を指定してください。

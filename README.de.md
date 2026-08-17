@@ -185,6 +185,14 @@ osd fs ls figures/
 osd fs get report.md --output ./report.md
 ```
 
+Unter Windows funktionieren dieselben Befehle in PowerShell; nur die Syntax der
+Shell unterscheidet sich:
+
+```powershell
+$id = osd session new --project "Reef survey"
+osd session send $id "Fit the 2015-2024 bleaching trend and write report.md" --wait
+```
+
 `--wait` kehrt zurück, wenn der Zug fertig ist, nicht wenn er angenommen wurde, und schlägt deutlich fehl, wenn keine Antwort entstand. `--json` gibt die Antwort der API selbst aus, für Skripte. Freigaben gelten weiterhin — der Agent fragt vor Kommandos, und `osd permission ls` / `osd permission allow <id>` ist die Antwort ohne Fenster.
 
 Ohne `--gateway` spricht `osd` mit einem Gateway, das auf derselben Maschine bereits läuft — auch dem der Desktop-App. Ist die App offen, funktioniert `osd session ls` also einfach. Sonst zeigt `osd login --gateway <url> --token <token>` auf beliebige Instanzen.

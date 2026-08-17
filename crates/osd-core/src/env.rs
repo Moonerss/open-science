@@ -111,9 +111,13 @@ fn platform_data_dir() -> Result<PathBuf, String> {
 }
 
 fn platform_document_dir() -> Option<PathBuf> {
-    if cfg!(target_os = "windows") {
-        return std::env::var_os("USERPROFILE").map(|p| PathBuf::from(p).join("Documents"));
+    #[cfg(windows)]
+    {
+        return windows_documents_dir()
+            .or_else(|| std::env::var_os("USERPROFILE").map(|p| PathBuf::from(p).join("Documents")));
     }
+    #[cfg(not(windows))]
+    {
     // XDG's Documents entry when the user configured one, else the usual name.
     // No new dependency: this is two lines of ini, and being wrong only costs
     // the default workspace a less pretty location.
@@ -121,6 +125,80 @@ fn platform_document_dir() -> Option<PathBuf> {
         return Some(dir);
     }
     home().ok().map(|h| h.join("Documents"))
+    }
+}
+
+/// Windows' real Documents folder, which is NOT always `%USERPROFILE%\Documents`
+/// — OneDrive redirects it, and then the two front doors would each invent their
+/// own default workspace on the same machine. Tauri resolves it through
+/// `SHGetKnownFolderPath`; without that dependency here, the same answer comes
+/// from the registry value Explorer keeps in sync with it.
+///
+/// The value is a `REG_EXPAND_SZ`, so it can contain `%VAR%` (measured on a real
+/// Windows 11 box: `Personal    REG_EXPAND_SZ    %USERPROFILE%\Documents`), and
+/// the path itself may contain spaces — hence splitting on the type token rather
+/// than on whitespace.
+#[cfg(windows)]
+fn windows_documents_dir() -> Option<PathBuf> {
+    let out = crate::runtime::quiet_command("reg")
+        .args([
+            "query",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+            "/v",
+            "Personal",
+        ])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    let raw = registry_value(&text, "Personal")?;
+    let expanded = expand_env_vars(&raw);
+    let path = PathBuf::from(expanded);
+    path.is_dir().then_some(path)
+}
+
+/// The value of `name` in `reg query` output, keeping any spaces in it.
+#[cfg(any(windows, test))]
+fn registry_value(text: &str, name: &str) -> Option<String> {
+    text.lines()
+        .filter(|l| l.trim_start().starts_with(name))
+        .find_map(|line| {
+            let (_, rest) = line.split_once("REG_EXPAND_SZ").or_else(|| line.split_once("REG_SZ"))?;
+            let value = rest.trim();
+            (!value.is_empty()).then(|| value.to_string())
+        })
+}
+
+/// Expand `%VAR%` references the way `REG_EXPAND_SZ` intends. An unset variable
+/// is left as written, so a wrong guess is visible rather than silently becoming
+/// a path relative to nothing.
+#[cfg(any(windows, test))]
+fn expand_env_vars(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut rest = raw;
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        match after.find('%') {
+            Some(end) => {
+                let name = &after[..end];
+                match std::env::var(name) {
+                    Ok(value) => out.push_str(&value),
+                    Err(_) => {
+                        out.push('%');
+                        out.push_str(name);
+                        out.push('%');
+                    }
+                }
+                rest = &after[end + 1..];
+            }
+            None => {
+                out.push('%');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn xdg_documents_dir() -> Option<PathBuf> {
@@ -174,6 +252,33 @@ mod tests {
     fn data_dir_is_identifier_scoped() {
         let dir = platform_data_dir().expect("a home directory in the test env");
         assert!(dir.ends_with(IDENTIFIER), "{dir:?} must be the app's own directory");
+    }
+
+    #[test]
+    fn windows_documents_come_from_the_registry_value() {
+        // Verbatim shape of `reg query ... /v Personal` on Windows 11, plus the
+        // OneDrive-redirected form — where `%USERPROFILE%\Documents` would be
+        // the WRONG answer and the desktop app (which asks Windows itself)
+        // would disagree with us about where the workspace lives.
+        let plain = "\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders\r\n    Personal    REG_EXPAND_SZ    %USERPROFILE%\\Documents\r\n";
+        assert_eq!(
+            registry_value(plain, "Personal").as_deref(),
+            Some("%USERPROFILE%\\Documents")
+        );
+        // A redirected path keeps its spaces.
+        let onedrive = "    Personal    REG_SZ    C:\\Users\\a\\OneDrive - Contoso Ltd\\Documents\r\n";
+        assert_eq!(
+            registry_value(onedrive, "Personal").as_deref(),
+            Some("C:\\Users\\a\\OneDrive - Contoso Ltd\\Documents")
+        );
+        assert_eq!(registry_value("nothing here", "Personal"), None);
+
+        std::env::set_var("OSD_TEST_PROFILE", "C:\\Users\\a");
+        assert_eq!(expand_env_vars("%OSD_TEST_PROFILE%\\Documents"), "C:\\Users\\a\\Documents");
+        // An unset variable stays visible instead of silently vanishing.
+        assert_eq!(expand_env_vars("%OSD_NOT_SET%\\x"), "%OSD_NOT_SET%\\x");
+        assert_eq!(expand_env_vars("no vars here"), "no vars here");
+        assert_eq!(expand_env_vars("50% done"), "50% done");
     }
 
     #[test]

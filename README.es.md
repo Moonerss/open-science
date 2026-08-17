@@ -185,6 +185,14 @@ osd fs ls figures/
 osd fs get report.md --output ./report.md
 ```
 
+En Windows los mismos comandos funcionan en PowerShell; solo cambia la sintaxis
+del shell:
+
+```powershell
+$id = osd session new --project "Reef survey"
+osd session send $id "Fit the 2015-2024 bleaching trend and write report.md" --wait
+```
+
 `--wait` vuelve cuando el turno ha terminado, no cuando fue aceptado, y falla de forma explícita si no produjo respuesta. `--json` imprime la respuesta de la propia API, para scripts. Las aprobaciones siguen vigentes — el agente pregunta antes de ejecutar comandos, y `osd permission ls` / `osd permission allow <id>` es cómo se responde sin ventana.
 
 Sin `--gateway`, `osd` habla con un gateway que ya esté corriendo en la misma máquina — incluido el de la app de escritorio — así que con la app abierta, `osd session ls` funciona sin más. Si no, apúntalo a donde quieras con `osd login --gateway <url> --token <token>`.

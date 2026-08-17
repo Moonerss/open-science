@@ -139,10 +139,19 @@ pub fn run(args: &Args) -> Result<(), String> {
 
 /// Block until the process is asked to stop.
 ///
-/// On Unix the sidecar shares this process group, so a terminal Ctrl-C already
-/// reaches it — but a `kill` (systemd, a supervisor, `nohup`) does not, and an
-/// orphaned OpenCode would keep the port and the session database open. Hence a
-/// handler that only sets a flag, which is all a signal handler may safely do.
+/// Both platforms do the same thing for the same reason: the handler sets a
+/// flag and the normal shutdown path runs, so the sidecar is always killed by
+/// US rather than left to whatever the OS does to a process group.
+///
+/// On Unix the sidecar shares this process group, so a terminal Ctrl-C reaches
+/// it anyway — but a `kill` (systemd, a supervisor, `nohup`) does not.
+///
+/// On Windows nothing can be assumed about the child receiving the console
+/// event at all: the sidecar is spawned with `CREATE_NO_WINDOW` (the desktop
+/// needs that — a console-subsystem child otherwise flashes a black window per
+/// spawn, #114), and a process created that way does not share this console.
+/// Without the handler below, Ctrl-C would end `osd` and leave an OpenCode
+/// running with the port and the session database still open.
 fn wait_for_shutdown() {
     static STOP: AtomicBool = AtomicBool::new(false);
 
@@ -159,14 +168,30 @@ fn wait_for_shutdown() {
         }
     }
 
+    #[cfg(windows)]
+    {
+        // kernel32 is linked by every MSVC target, so this needs no crate.
+        extern "system" {
+            fn SetConsoleCtrlHandler(
+                handler: Option<unsafe extern "system" fn(u32) -> i32>,
+                add: i32,
+            ) -> i32;
+        }
+        // Returning TRUE means "handled": Windows then does NOT terminate us,
+        // so the loop below gets to stop the gateway and kill the sidecar.
+        // Covers Ctrl-C, Ctrl-Break and the console being closed.
+        unsafe extern "system" fn on_console_event(_event: u32) -> i32 {
+            STOP.store(true, Ordering::Relaxed);
+            1
+        }
+        // SAFETY: a plain FFI call; the handler only stores to an atomic.
+        unsafe {
+            SetConsoleCtrlHandler(Some(on_console_event), 1);
+        }
+    }
+
     while !STOP.load(Ordering::Relaxed) {
         std::thread::sleep(Duration::from_millis(200));
-        // On Windows a console Ctrl-C terminates this process outright; the
-        // sidecar is attached to the same console and receives it too.
-        #[cfg(not(unix))]
-        {
-            continue;
-        }
     }
 }
 
