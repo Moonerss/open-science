@@ -40,6 +40,7 @@ runs, and review into one auditable desktop workflow.
 
 ## News
 
+- **2026-08-17** — 🖥️ **Runs without a screen.** `osd server` starts the whole workbench — workspace, agent runtime, and the *same* web UI — on a machine with no display, and `osd session send … --wait` drives it from a script or another agent. One tarball, no installer. *(unreleased)*
 - **2026-08-13** — 🔌 **Speaks the Agent Client Protocol, both directions.** Drive Codex, Gemini CLI, Claude Code, or any other ACP agent from inside this app — with its own models, history, and your MCP connectors — or drive Open Science itself from Zed, JetBrains, or Neovim. *(v0.4.0)*
 - **2026-08-01** — 🗂️ **Projects, memory, and full history.** Group sessions into named projects (import an existing repo *in place*, no copying), give the agent persistent global and project memory, and reach every past conversation through a searchable history with archive, restore, and export. *(v0.3.1)*
 - **2026-07-24** — 🪟 **Split-pane tiling.** Tile sessions side by side, drag panes to re-dock them, keep several independent Screens, and run a different model in each pane. *(v0.3.0)*
@@ -56,6 +57,7 @@ runs, and review into one auditable desktop workflow.
 - [🧪 Current capabilities](#current-capabilities)
 - [🔌 Skills and connectors](#skills-and-connectors)
 - [📦 Install](#install)
+- [🖥️ Headless & CLI (`osd`)](#headless--cli-osd)
 - [🚀 Build from source](#build-from-source)
 - [🔒 Safety and privacy](#safety-and-privacy)
 - [🗂️ Repository layout](#repository-layout)
@@ -176,6 +178,7 @@ office/document skills below.
 | Remote compute | Register machines from your `~/.ssh/config`, probe them, and submit, track, or cancel jobs from the app. |
 | Appearance | Light, Warm, and Dark themes with per-theme accents, and UI zoom. |
 | Files | Global and per-session file browsing, context menu actions, external open/reveal, copy path, and local preview server. |
+| Headless & CLI | `osd server` runs the workbench with no window — same workspace, same runtime, same web UI, served from one self-contained directory — and `osd` drives it (or a running desktop app) from a terminal: sessions, projects, runs, files, approvals, `--wait`, `--json`. |
 | Remote access | Token-authenticated gateway that serves the real UI to a CLI, a LAN web browser, or your phone (loopback by default, LAN opt-in); read-only vs full access modes; copy a link with the token embedded to connect in one tap. API keys never cross the wire. |
 | Editor interop (ACP) | Speaks the Agent Client Protocol in both directions: run any ACP agent (Codex, Gemini CLI, Claude Code, …) as the runtime behind the ordinary UI, with its own model and reasoning selectors, history replay, and this app's MCP connectors; or let an external editor (Zed, JetBrains, Neovim, …) drive Open Science, reusing the gateway token. |
 | Browser control | The agent drives your own Chrome — profile and login state preserved — reading pages through the accessibility tree, or an isolated/private browser on demand. |
@@ -237,6 +240,45 @@ sudo apt install ./Open.Science_*.deb
 sudo rpm -i Open.Science-*.rpm
 ```
 
+## Headless & CLI (`osd`)
+
+A research machine usually has no screen. `osd` is the same workbench without
+one: the same workspace layout, the same agent runtime, the same projects and
+provenance, and the same web UI — served over HTTP instead of drawn in a window.
+
+```bash
+# On the server (unpack the osd-<version>-<target> archive from Releases)
+./osd auth set anthropic --key sk-…      # stays on this machine, never on the wire
+./osd server --lan                        # prints its URL and access token
+```
+
+Open the printed URL and you get the real desktop UI in a browser, phone
+included. Or drive it from a terminal — on the same machine, over SSH, or from
+your laptop:
+
+```bash
+osd project new "Reef survey"
+id=$(osd session new --project "Reef survey")
+osd session send "$id" "Fit the 2015–2024 bleaching trend and write report.md"     --model anthropic/claude-sonnet-4-5 --wait
+osd fs ls figures/
+osd fs get report.md --output ./report.md
+```
+
+`--wait` returns when the turn is finished, not when it was accepted, and fails
+loudly if it produced no reply. `--json` prints the API's own response for
+scripts. Approvals still apply — the agent asks before running commands, and
+`osd permission ls` / `osd permission allow <id>` is how you answer without a
+window.
+
+With no `--gateway` given, `osd` talks to a gateway already running on the same
+machine — including the desktop app's — so with the app open, `osd session ls`
+just works. Otherwise point it anywhere with `osd login --gateway <url> --token
+<token>`.
+
+What is *not* there without a desktop: local Jupyter kernels, native file
+dialogs, and the OS file manager. The web UI hides those rather than offering
+controls that would fail.
+
 ## Build from source
 
 Prerequisites:
@@ -293,6 +335,8 @@ pnpm lint
 | `runtime/harness/` | Runtime harness knowledge and operator context. |
 | `runtime/mcp/` | MCP runtime notes/configuration. |
 | `examples/` | Built-in example workspaces. |
+| `crates/osd-core/` | The server core — workspace, sidecar, gateway. No Tauri, so it runs headless. |
+| `crates/osd-cli/` | `osd`: the headless server and its client. |
 | `scripts/dev/` | Sidecar, `uv`, skill fetchers, and focused regression probes. |
 | `docs/` | Product, technical, operator, connector, and research notes. |
 

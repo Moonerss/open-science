@@ -295,6 +295,19 @@ fn package_dependency_version(path: &Path, package: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// Does a package.json dependency SPEC name exactly this version?
+///
+/// The spec is a range — `npm install pkg@1.18.18` writes `^1.18.18` — while
+/// the version bundled beside it is exact, so comparing the two as strings is
+/// never equal. That is not a theoretical mismatch: it made
+/// `deploy_goal_plugin_dependencies` fail its own post-check on every fresh
+/// profile, so the goal plugin was never deployed and `/goal` silently did
+/// nothing. Only a range that pins THIS version counts as a match; anything
+/// wider or different is a genuine mismatch and still refuses.
+fn dependency_pins(spec: &str, version: &str) -> bool {
+    spec.trim().trim_start_matches(['^', '~', '=', '>', '<', 'v', ' ']) == version
+}
+
 fn installed_package_version(node_modules: &Path, package: &str) -> Option<String> {
     let package_json = package
         .split('/')
@@ -324,9 +337,8 @@ fn deploy_goal_plugin_dependencies(src: &Path, dst: &Path) -> Result<(), String>
     let package_json = dst.join("package.json");
     let package_lock = dst.join("package-lock.json");
     let node_modules = dst.join("node_modules");
-    let dependency_ready =
-        package_dependency_version(&package_json, OPENCODE_PLUGIN_PACKAGE).as_deref()
-            == Some(expected)
+    let dependency_ready = package_dependency_version(&package_json, OPENCODE_PLUGIN_PACKAGE)
+        .is_some_and(|spec| dependency_pins(&spec, expected))
         && installed_package_version(&node_modules, OPENCODE_PLUGIN_PACKAGE).as_deref()
             == Some(expected)
         && package_lock.is_file();
@@ -364,8 +376,8 @@ fn deploy_goal_plugin_dependencies(src: &Path, dst: &Path) -> Result<(), String>
         std::fs::copy(&src_lock, &package_lock).map_err(|e| e.to_string())?;
     }
 
-    if package_dependency_version(&package_json, OPENCODE_PLUGIN_PACKAGE).as_deref()
-        != Some(expected)
+    if !package_dependency_version(&package_json, OPENCODE_PLUGIN_PACKAGE)
+        .is_some_and(|spec| dependency_pins(&spec, expected))
         || installed_package_version(&node_modules, OPENCODE_PLUGIN_PACKAGE).as_deref()
             != Some(expected)
     {
@@ -1567,7 +1579,7 @@ pub fn kill_child(state: &RuntimeState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        auth_has_provider, deploy_goal_plugin_dependencies, parse_scutil_proxy,
+        auth_has_provider, dependency_pins, deploy_goal_plugin_dependencies, parse_scutil_proxy,
         ensure_base_layout, prune_stale_skills, random_hex, remove_key_from_config,
         resolve_proxy_env, skill_name_from_markdown, sync_skill_pack, validate_proxy_url,
         workspace_skill_dirs,
@@ -1821,6 +1833,42 @@ mod tests {
             .join("node_modules/@opencode-ai/plugin/dist/tool.js")
             .is_file());
         assert!(dst.join("package-lock.json").is_file());
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn deploys_the_caret_range_npm_actually_writes() {
+        // Regression: every test above pinned the dependency exactly, but
+        // `npm install @opencode-ai/plugin@1.18.18` — which is what
+        // fetch-goal-plugin.sh runs — writes `^1.18.18`. Comparing that range
+        // to the exact bundled version as strings never matched, so the
+        // post-copy check failed on EVERY fresh profile: no goal plugin was
+        // deployed, none was registered, and `/goal` silently did nothing.
+        // Found by unpacking a release archive and starting a server from it.
+        let tmp = std::env::temp_dir().join(format!("goal-deps-caret-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let src = tmp.join("src");
+        let dst = tmp.join("dst");
+        write(&src.join(".opencode-plugin-version"), "1.18.18\n");
+        write(
+            &src.join("package.json"),
+            r#"{"dependencies":{"@opencode-ai/plugin":"^1.18.18"}}"#,
+        );
+        write(&src.join("package-lock.json"), "{}");
+        write(
+            &src.join("node_modules/@opencode-ai/plugin/package.json"),
+            r#"{"name":"@opencode-ai/plugin","version":"1.18.18"}"#,
+        );
+
+        deploy_goal_plugin_dependencies(&src, &dst).expect("a caret range still pins 1.18.18");
+        assert!(dst.join("node_modules/@opencode-ai/plugin/package.json").is_file());
+
+        // A range that pins a DIFFERENT version is still a real mismatch.
+        assert!(dependency_pins("^1.18.18", "1.18.18"));
+        assert!(dependency_pins("~1.18.18", "1.18.18"));
+        assert!(dependency_pins("1.18.18", "1.18.18"));
+        assert!(!dependency_pins("^1.17.13", "1.18.18"));
+        assert!(!dependency_pins("*", "1.18.18"));
         fs::remove_dir_all(&tmp).unwrap();
     }
 
