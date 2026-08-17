@@ -35,6 +35,7 @@ Formerly Open Science. Una alternativa desktop open source a Claude Science y wo
 
 ## Novedades
 
+- **2026-08-17** — 🖥️ **Funciona sin pantalla.** `osd server` levanta el banco de trabajo completo — workspace, runtime del agente y la *misma* UI web — en una máquina sin display, y `osd session send … --wait` lo maneja desde un script o desde otro agente. Un archivo comprimido, sin instalador. *(sin publicar)*
 - **2026-08-13** — 🔌 **Habla el Agent Client Protocol, en ambas direcciones.** Maneja Codex, Gemini CLI, Claude Code o cualquier otro agente ACP desde dentro de esta app — con sus propios modelos, su historial y tus conectores MCP — o maneja Open Science desde Zed, JetBrains o Neovim. *(v0.4.0)*
 - **2026-08-01** — 🗂️ **Proyectos, memoria e historial completo.** Agrupa sesiones en proyectos con nombre (un repositorio existente se importa *en su sitio*, sin copiarlo), da al agente memoria persistente global y por proyecto, y alcanza cualquier conversación pasada desde un historial buscable con archivar, restaurar y exportar. *(v0.3.1)*
 - **2026-07-24** — 🪟 **Paneles divididos.** Coloca sesiones en mosaico, arrastra paneles para reacomodarlos, mantén varias pantallas independientes y usa un modelo distinto en cada panel. *(v0.3.0)*
@@ -51,6 +52,7 @@ Formerly Open Science. Una alternativa desktop open source a Claude Science y wo
 - [🧪 Capacidades actuales](#capacidades-actuales)
 - [🔌 Skills y conectores](#skills-y-conectores)
 - [📦 Instalación](#instalación)
+- [🖥️ Sin pantalla y CLI (`osd`)](#sin-pantalla-y-cli-osd)
 - [🚀 Compilar desde el código](#compilar-desde-el-código)
 - [🔒 Seguridad y privacidad](#seguridad-y-privacidad)
 - [🗂️ Estructura del repositorio](#estructura-del-repositorio)
@@ -134,6 +136,7 @@ Vienen en el pack `ai4s-skills`, junto a las skills de revisión propias y las s
 | Cómputo remoto | Registra máquinas desde tu `~/.ssh/config`, compruébalas y envía, sigue o cancela trabajos desde la app. |
 | Apariencia | Temas Light, Warm y Dark con acentos propios, y zoom de la interfaz. |
 | Archivos | Navegación global y por sesión, menú contextual, abrir/revelar en el sistema, copiar ruta y servidor local de previsualización. |
+| Sin pantalla y CLI | `osd server` ejecuta el banco de trabajo sin ventana — el mismo workspace, el mismo runtime, la misma UI web, servidos desde un único directorio autocontenido — y `osd` lo maneja (o maneja una app de escritorio en marcha) desde la terminal: sesiones, proyectos, ejecuciones, archivos, aprobaciones, `--wait`, `--json`. |
 | Acceso remoto | Gateway autenticado por token que sirve la UI real a una CLI, un navegador web en la LAN o tu teléfono (loopback por defecto, LAN opcional); modos de solo lectura frente a acceso completo; copia un enlace con el token incrustado para conectarte con un toque. Las API keys nunca cruzan la red. |
 | Interoperabilidad con editores (ACP) | Habla el Agent Client Protocol en ambas direcciones: ejecuta cualquier agente ACP (Codex, Gemini CLI, Claude Code, …) como el runtime detrás de la UI de siempre, con sus propios selectores de modelo y de esfuerzo de razonamiento, reproducción del historial y los conectores MCP de esta app; o deja que un editor externo (Zed, JetBrains, Neovim, …) maneje Open Science reutilizando el token del gateway. |
 | Control del navegador | El agente maneja tu propio Chrome — con el perfil y el estado de sesión preservados — leyendo las páginas a través del árbol de accesibilidad, o un navegador aislado/privado cuando lo pidas. |
@@ -160,6 +163,33 @@ Descarga la versión más reciente desde [Releases](https://github.com/ai4s-rese
 Los paquetes de macOS están firmados con Developer ID, notarizados y con el ticket adjunto, así que se abren con normalidad: no hace falta el truco de `xattr`. Los builds de Windows y Linux aún no están firmados.
 
 En Windows, usa **More info -> Run anyway** en SmartScreen.
+
+## Sin pantalla y CLI (`osd`)
+
+Una máquina de investigación normalmente no tiene pantalla. `osd` es el mismo banco de trabajo sin ella: la misma organización del workspace, el mismo runtime del agente, los mismos proyectos y procedencia, y la misma UI web — servida por HTTP en lugar de dibujada en una ventana.
+
+```bash
+# On the server (unpack the osd-<version>-<target> archive from Releases)
+./osd auth set anthropic --key sk-…      # se queda en esta máquina, nunca viaja por la red
+./osd server --lan                        # imprime su URL y su token de acceso
+```
+
+Abre la URL que imprime y tendrás la UI de escritorio real en un navegador, teléfono incluido. O manéjalo desde una terminal: en la misma máquina, por SSH o desde tu portátil:
+
+```bash
+osd project new "Reef survey"
+id=$(osd session new --project "Reef survey")
+osd session send "$id" "Fit the 2015–2024 bleaching trend and write report.md" \
+    --model anthropic/claude-sonnet-4-5 --wait
+osd fs ls figures/
+osd fs get report.md --output ./report.md
+```
+
+`--wait` vuelve cuando el turno ha terminado, no cuando fue aceptado, y falla de forma explícita si no produjo respuesta. `--json` imprime la respuesta de la propia API, para scripts. Las aprobaciones siguen vigentes — el agente pregunta antes de ejecutar comandos, y `osd permission ls` / `osd permission allow <id>` es cómo se responde sin ventana.
+
+Sin `--gateway`, `osd` habla con un gateway que ya esté corriendo en la misma máquina — incluido el de la app de escritorio — así que con la app abierta, `osd session ls` funciona sin más. Si no, apúntalo a donde quieras con `osd login --gateway <url> --token <token>`.
+
+Lo que *no* hay sin escritorio: kernels locales de Jupyter, diálogos de archivo nativos y el gestor de archivos del sistema. La UI web los oculta en lugar de ofrecer controles que fallarían.
 
 ## Compilar desde el código
 
@@ -196,6 +226,8 @@ Los archivos del workspace, datos crudos, historial, procedencia, notebooks y ru
 | `runtime/skills/core/` | Skills científicos propios. |
 | `runtime/skills/external/` | Skills externos obtenidos durante build. |
 | `examples/` | Workspaces de ejemplo incluidos. |
+| `crates/osd-core/` | El núcleo del servidor — workspace, sidecar, gateway. Sin Tauri, por eso funciona sin pantalla. |
+| `crates/osd-cli/` | `osd`: el servidor sin pantalla y su cliente. |
 | `scripts/dev/` | Fetchers de sidecar, `uv`, skills y pruebas enfocadas. |
 | `docs/` | Notas de producto, técnica, operator, conectores e investigación. |
 

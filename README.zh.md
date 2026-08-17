@@ -39,6 +39,7 @@
 
 ## 最新动态
 
+- **2026-08-17** — 🖥️ **无屏也能跑。** `osd server` 在没有显示器的机器上启动整套工作台——工作区、智能体运行时，以及*同一套* Web UI；`osd session send … --wait` 让脚本或另一个智能体来驱动它。一个压缩包，无需安装程序。 *(未发布)*
 - **2026-08-13** — 🔌 **双向支持 Agent Client Protocol。** 在本应用里直接驱动 Codex、Gemini CLI、Claude Code 等任意 ACP 智能体——沿用它自己的模型、历史，以及你在本应用配置的 MCP 连接器；反过来，也可以从 Zed、JetBrains、Neovim 里驱动 Open Science。 *(v0.4.0)*
 - **2026-08-01** — 🗂️ **项目、记忆与完整历史。** 会话可以归入命名项目（**就地**导入已有仓库，不做复制），智能体获得持久的全局记忆与项目记忆，全部历史对话都能在可搜索的历史视图中找到，并支持归档、恢复与导出。 *(v0.3.1)*
 - **2026-07-24** — 🪟 **分屏平铺。** 会话可以并排平铺、拖拽分栏重新停靠、保留多个互不干扰的「屏幕」，每个分栏还能用不同的模型。 *(v0.3.0)*
@@ -55,6 +56,7 @@
 - [🧪 当前能力](#当前能力)
 - [🔌 技能与连接器](#技能与连接器)
 - [📦 安装](#安装)
+- [🖥️ 无头与命令行(`osd`)](#无头与命令行osd)
 - [🚀 从源码构建](#从源码构建)
 - [🔒 安全与隐私](#安全与隐私)
 - [🗂️ 仓库结构](#仓库结构)
@@ -144,6 +146,7 @@
 | 远程计算 | 从 `~/.ssh/config` 登记计算机、探测可用性,并在应用内提交、跟踪或取消作业。 |
 | 外观 | Light / Warm / Dark 三套主题(各有自己的强调色)与界面缩放。 |
 | 文件 | 全局和会话内文件浏览、右键菜单、系统打开/定位、复制路径、本地预览服务。 |
+| 无头与命令行 | `osd server` 以无窗口方式运行工作台——同样的工作区、同样的运行时、同样的 Web UI，全部来自一个自包含目录；`osd` 则从终端驱动它（或驱动正在运行的桌面应用）：会话、项目、运行记录、文件、审批，支持 `--wait` 与 `--json`。 |
 | 远程访问 | 基于令牌认证的网关，把真正的 UI 提供给命令行、局域网 Web 浏览器或你的手机(默认仅回环地址，局域网需手动开启);支持只读与完全访问两种模式;可复制一条内嵌令牌的链接，一键连接。API key 永不经过网络传输。 |
 | 编辑器互通（ACP） | 双向支持 Agent Client Protocol：既可以把任意 ACP 智能体（Codex、Gemini CLI、Claude Code 等）作为运行时接到常规界面背后，沿用它自己的模型与推理档位选择、历史回放，以及本应用的 MCP 连接器；也可以让外部编辑器（Zed、JetBrains、Neovim 等）驱动 Open Science，复用网关令牌。 |
 | 浏览器控制 | 智能体驱动你自己的 Chrome——保留配置文件和登录状态——通过无障碍树读取页面，也可按需使用隔离的隐私浏览器。 |
@@ -199,6 +202,33 @@ sudo apt install ./Open.Science_*.deb
 sudo rpm -i Open.Science-*.rpm
 ```
 
+## 无头与命令行(`osd`)
+
+科研机器通常没有屏幕。`osd` 就是没有屏幕的同一套工作台：同样的工作区布局、同样的智能体运行时、同样的项目与溯源、同样的 Web UI——只是通过 HTTP 提供，而不是画在窗口里。
+
+```bash
+# 在服务器上（解压 Releases 里的 osd-<version>-<target> 压缩包）
+./osd auth set anthropic --key sk-…      # 只留在本机，绝不上网络
+./osd server --lan                        # 打印访问地址和令牌
+```
+
+打开打印出来的地址，浏览器里就是真正的桌面 UI，手机也一样。也可以从终端驱动它——本机、SSH 过去，或者从你的笔记本：
+
+```bash
+osd project new "Reef survey"
+id=$(osd session new --project "Reef survey")
+osd session send "$id" "Fit the 2015–2024 bleaching trend and write report.md" \
+    --model anthropic/claude-sonnet-4-5 --wait
+osd fs ls figures/
+osd fs get report.md --output ./report.md
+```
+
+`--wait` 在这一轮真正跑完时才返回，而不是在被接受时；如果这一轮什么都没答，它会明确报错。`--json` 输出接口原样的响应，供脚本解析。审批规则依然生效——智能体执行命令前仍会询问，没有窗口时就用 `osd permission ls` / `osd permission allow <id>` 来回答。
+
+不指定 `--gateway` 时，`osd` 会连上本机已经在跑的网关——包括桌面应用自己的那个——所以只要应用开着，`osd session ls` 直接就能用。否则用 `osd login --gateway <url> --token <token>` 指向任意一台。
+
+没有桌面时*不具备*的能力：本地 Jupyter 内核、系统文件对话框、系统文件管理器。Web UI 会直接隐藏它们，而不是给出一个注定失败的按钮。
+
 ## 从源码构建
 
 前置依赖：
@@ -249,6 +279,8 @@ pnpm lint
 | `runtime/harness/` | 运行时 harness 知识与 operator 上下文。 |
 | `runtime/mcp/` | MCP 运行时说明和配置。 |
 | `examples/` | 内置示例工作区。 |
+| `crates/osd-core/` | 服务端内核——工作区、sidecar、网关。不依赖 Tauri，因而可无头运行。 |
+| `crates/osd-cli/` | `osd`：无头服务端及其客户端。 |
 | `scripts/dev/` | sidecar、`uv`、技能拉取器和聚焦回归探针。 |
 | `docs/` | 产品、技术、operator、连接器和研究笔记。 |
 

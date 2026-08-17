@@ -306,6 +306,12 @@ interface RuntimeState {
   startDraftInWorkspace: (path: string, key?: string) => Promise<void>;
   /** Active workspace folder (absolute path); null in the browser. */
   workspace: string | null;
+  /** Web client only: the folder this BROWSER chose to work in (a project the
+   *  user opened here). The host's own active folder is never moved from a
+   *  remote client — doing so would drag the person sitting at the desktop into
+   *  another workspace mid-sentence — so the choice lives here and scopes this
+   *  client's stream, its file views and the sessions it creates (#81). */
+  webWorkspace: string | null;
   /** Web client only: the gateway token is read-only (GET-only) — every write
    *  (new session, prompt, approval) would 403, so the UI hides/disables them. */
   webReadOnly: boolean;
@@ -1838,6 +1844,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     set((s) => ({ sessionAgents: { ...s.sessionAgents, [sessionId ?? s.currentId ?? DRAFT_KEY]: mode } })),
   projects: [],
   workspace: null,
+  webWorkspace: null,
   webReadOnly: false,
   draftWorkspaces: {},
   switching: false,
@@ -2155,7 +2162,8 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         });
         if (r.ok) {
           const who = (await r.json()) as { directory?: string; mode?: string };
-          directory = who.directory ?? null;
+          // The folder this browser opened, if any; otherwise the host's.
+          directory = get().webWorkspace ?? who.directory ?? null;
           // A read-only token 403s every write — surface that in the UI
           // instead of letting "New session" / the composer fail opaquely.
           readOnly = who.mode === "read-only";
@@ -3112,13 +3120,26 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // Both commands answer with the canonical path the runtime resolved —
       // which is exactly what the session's own `directory` will report, so aim
       // the draft at that, not at the raw string the caller passed.
-      const landed =
-        "dated" in target ? await newDatedWorkspace(target.dated) : await setWorkspace(target.path);
+      // In the browser there is no `set_workspace` to call and there must not
+      // be: the host keeps its own active folder. Opening a project here just
+      // re-scopes THIS client — the session it creates carries the folder, so
+      // the work still lands in the project (#81). A dated folder has no
+      // gateway equivalent, so the web client stays on the host's folder and
+      // the session lands there.
+      const landed = isGatewayWeb
+        ? "dated" in target
+          ? get().workspace
+          : target.path
+        : "dated" in target
+          ? await newDatedWorkspace(target.dated)
+          : await setWorkspace(target.path);
       // Reset the local kernel so it respawns in the new folder, then reconnect
       // the event stream scoped to it (connect() re-reads the active folder —
       // the sidecar itself keeps running). The switch aims the draft at that
       // folder, so the next new session lands exactly there.
-      await kernelReset().catch(() => {});
+      // The local kernel is a desktop feature; there is none to re-root here.
+      if (!isGatewayWeb) await kernelReset().catch(() => {});
+      if (isGatewayWeb && landed) set({ webWorkspace: landed, workspace: landed });
       set((s) => {
         // Back to a draft in the new folder — the draft pane must not carry
         // files from the previous folder. Session panes keep their memory.
@@ -3126,7 +3147,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         delete panes[DRAFT_KEY];
         const sessionAgents = { ...s.sessionAgents };
         delete sessionAgents[DRAFT_KEY];
-        const draftWorkspaces = { ...s.draftWorkspaces, [target.key ?? DRAFT_KEY]: landed };
+        const key = target.key ?? DRAFT_KEY;
+        const draftWorkspaces = { ...s.draftWorkspaces };
+        // No folder resolved (a web client asked for a dated one, which only
+        // the host can make): leave the draft unaimed so the session is created
+        // wherever the server is, rather than aimed at nothing.
+        if (landed) draftWorkspaces[key] = landed;
+        else delete draftWorkspaces[key];
         return { currentId: null, panes, draftWorkspaces, sessionAgents };
       });
       await get().connectRetry();

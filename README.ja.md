@@ -35,6 +35,7 @@ Formerly Open Science. Claude Science などの AI-for-science ワークベン�
 
 ## ニュース
 
+- **2026-08-17** — 🖥️ **画面がなくても動く。** `osd server` はディスプレイのないマシンでワークベンチ一式（ワークスペース、エージェントランタイム、そして*同じ* Web UI）を起動し、`osd session send … --wait` でスクリプトや別のエージェントから動かせます。アーカイブひとつ、インストーラー不要。 *(未リリース)*
 - **2026-08-13** — 🔌 **Agent Client Protocol に双方向で対応。** Codex、Gemini CLI、Claude Code などの ACP エージェントを、そのエージェント自身のモデル・履歴と本アプリの MCP コネクタごと、このアプリの中から動かせます。逆に Zed、JetBrains、Neovim から Open Science を動かすこともできます。 *(v0.4.0)*
 - **2026-08-01** — 🗂️ **プロジェクト・メモリ・全履歴。** セッションを名前付きプロジェクトにまとめ（既存リポジトリはコピーせず**その場で**インポート）、グローバルとプロジェクトの永続メモリを持たせ、過去のすべての会話を検索可能な履歴（アーカイブ／復元／エクスポート付き）から辿れます。 *(v0.3.1)*
 - **2026-07-24** — 🪟 **分割ペインのタイリング。** セッションを並べて表示し、ペインをドラッグして再配置し、独立した「スクリーン」を複数保持でき、ペインごとに別のモデルを使えます。 *(v0.3.0)*
@@ -51,6 +52,7 @@ Formerly Open Science. Claude Science などの AI-for-science ワークベン�
 - [🧪 現在の機能](#現在の機能)
 - [🔌 スキルとコネクタ](#スキルとコネクタ)
 - [📦 インストール](#インストール)
+- [🖥️ ヘッドレスと CLI(`osd`)](#ヘッドレスと-cliosd)
 - [🚀 ソースからビルド](#ソースからビルド)
 - [🔒 安全性とプライバシー](#安全性とプライバシー)
 - [🗂️ リポジトリ構成](#リポジトリ構成)
@@ -134,6 +136,7 @@ Formerly Open Science. Claude Science などの AI-for-science ワークベン�
 | リモート計算 | `~/.ssh/config` からマシンを登録し、疎通を確認し、ジョブの投入・追跡・キャンセルをアプリ内から実行。 |
 | 外観 | Light / Warm / Dark の 3 テーマ（テーマ別アクセント）と UI ズーム。 |
 | ファイル | グローバル/セッション内のファイルブラウズ、右クリック操作、外部アプリで開く、パスコピー、ローカルプレビューサーバー。 |
+| ヘッドレスと CLI | `osd server` はウィンドウなしでワークベンチを動かします（同じワークスペース、同じランタイム、同じ Web UI を、自己完結したディレクトリひとつから配信）。`osd` はそれを（あるいは動作中のデスクトップアプリを）ターミナルから操作します: セッション、プロジェクト、実行履歴、ファイル、承認、`--wait`、`--json`。 |
 | リモートアクセス | 本物の UI を CLI、LAN 上の Web ブラウザ、またはスマホへ配信するトークン認証ゲートウェイ（既定はループバック、LAN はオプトイン）。読み取り専用/フルアクセスの各モード。トークンを埋め込んだリンクをコピーし、ワンタップで接続。API キーが通信路を渡ることはありません。 |
 | エディタ連携（ACP） | Agent Client Protocol に双方向で対応：任意の ACP エージェント（Codex、Gemini CLI、Claude Code など）を通常の UI の背後のランタイムとして動かし、そのエージェント自身のモデル／推論レベルの選択、履歴の再生、本アプリの MCP コネクタをそのまま使えます。逆に外部エディタ（Zed、JetBrains、Neovim など）がゲートウェイのトークンを再利用して Open Science を駆動することもできます。 |
 | ブラウザ制御 | エージェントがあなた自身の Chrome を——プロファイルとログイン状態を保ったまま——操作し、アクセシビリティツリーを通じてページを読み取ります。必要に応じて分離された/プライベートなブラウザも使えます。 |
@@ -160,6 +163,33 @@ Formerly Open Science. Claude Science などの AI-for-science ワークベン�
 macOS パッケージは Developer ID 署名・Notarization・staple 済みで、そのまま開けます（`xattr` の回避策は不要）。Windows と Linux のビルドはまだ署名されていません。
 
 Windows では SmartScreen の **More info -> Run anyway** を選択します。
+
+## ヘッドレスと CLI(`osd`)
+
+研究用マシンにはたいてい画面がありません。`osd` は画面のない同じワークベンチです。ワークスペースの構成も、エージェントランタイムも、プロジェクトと来歴も、Web UI も同じ — ウィンドウに描く代わりに HTTP で配信するだけです。
+
+```bash
+# On the server (unpack the osd-<version>-<target> archive from Releases)
+./osd auth set anthropic --key sk-…      # このマシンに残り、ネットワークには出ません
+./osd server --lan                        # URL とアクセストークンを表示します
+```
+
+表示された URL を開けば、ブラウザ（スマホでも）で本物のデスクトップ UI が使えます。ターミナルから動かすこともできます — 同じマシンでも、SSH 越しでも、手元のノート PC からでも:
+
+```bash
+osd project new "Reef survey"
+id=$(osd session new --project "Reef survey")
+osd session send "$id" "Fit the 2015–2024 bleaching trend and write report.md" \
+    --model anthropic/claude-sonnet-4-5 --wait
+osd fs ls figures/
+osd fs get report.md --output ./report.md
+```
+
+`--wait` はターンが受理された時点ではなく、実際に終わった時点で戻ります。返答が何も出なかった場合は明確に失敗します。`--json` は API の応答そのものを出力するのでスクリプト向きです。承認は引き続き有効です — エージェントはコマンド実行前に尋ねますし、ウィンドウがない環境では `osd permission ls` / `osd permission allow <id>` で答えます。
+
+`--gateway` を指定しない場合、`osd` は同じマシンで動いているゲートウェイ（デスクトップアプリのものを含む）に接続します。つまりアプリを開いていれば `osd session ls` はそのまま動きます。それ以外は `osd login --gateway <url> --token <token>` で任意の接続先を指定してください。
+
+デスクトップがない環境で*使えない*もの: ローカルの Jupyter カーネル、ネイティブのファイルダイアログ、OS のファイルマネージャ。Web UI は失敗する操作を見せる代わりに、それらを隠します。
 
 ## ソースからビルド
 
@@ -196,6 +226,8 @@ pnpm lint
 | `runtime/skills/core/` | 第一者科学スキル。 |
 | `runtime/skills/external/` | ビルド時取得の外部スキル。 |
 | `examples/` | 内蔵サンプルワークスペース。 |
+| `crates/osd-core/` | サーバーコア — ワークスペース、サイドカー、ゲートウェイ。Tauri に依存しないためヘッドレスで動きます。 |
+| `crates/osd-cli/` | `osd`: ヘッドレスサーバーとそのクライアント。 |
 | `scripts/dev/` | sidecar、`uv`、スキル取得、回帰プローブ。 |
 | `docs/` | 製品、技術、operator、コネクタ、研究メモ。 |
 

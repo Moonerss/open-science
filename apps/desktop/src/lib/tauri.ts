@@ -1,7 +1,7 @@
 // Thin bridge to the Tauri Rust side. In a plain browser these are no-ops so the
 // app still runs in `pnpm dev`; in the packaged desktop app they invoke Rust commands.
 
-import { isGatewayWeb, gatewayGet } from "./webMode";
+import { isGatewayWeb, gatewayGet, gatewayPost } from "./webMode";
 
 export const isTauri =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -750,6 +750,14 @@ export interface ProjectInfo {
 /** Create a project folder (with metadata, harness and an initial git
  *  snapshot). Does not switch the active workspace. */
 export async function createProject(name: string): Promise<ProjectInfo> {
+  // The web client creates projects through the gateway: a project is a folder
+  // plus metadata on the SERVER, which is exactly where a headless install has
+  // no desktop to fall back to (#81).
+  if (isGatewayWeb) {
+    const created = await gatewayPost<ProjectInfo>("/v1/projects", { name });
+    if (!created) throw new Error("the gateway did not return the new project");
+    return created;
+  }
   if (!isTauri) throw new Error("not running in the desktop app");
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<ProjectInfo>("create_project", { name });
