@@ -114,8 +114,21 @@ fn describe_error(status: u16, body: &[u8]) -> String {
     }
 }
 
+/// A gateway address must carry its scheme. Without one, reqwest fails with
+/// "relative URL without a base", which says nothing about what to fix.
+fn check_url(base: &str) -> Result<String, String> {
+    let base = base.trim().trim_end_matches('/');
+    if base.starts_with("http://") || base.starts_with("https://") {
+        return Ok(base.to_string());
+    }
+    Err(format!(
+        "{base:?} is not a gateway address — it needs a scheme, e.g. http://{base}"
+    ))
+}
+
 fn resolve(args: &Args) -> Result<(String, String, String), String> {
     if let Some(base) = args.value("gateway").or_else(|| env_var("OSD_GATEWAY")) {
+        let base = check_url(&base)?;
         let token = args
             .value("token")
             .or_else(|| env_var("OSD_TOKEN"))
@@ -124,7 +137,7 @@ fn resolve(args: &Args) -> Result<(String, String, String), String> {
         return Ok((base, token, "--gateway/OSD_GATEWAY".into()));
     }
     if let Some((base, token)) = stored() {
-        return Ok((base, token, format!("{}", config_file().display())));
+        return Ok((check_url(&base)?, token, format!("{}", config_file().display())));
     }
     if let Some((base, token)) = local_gateway() {
         return Ok((base, token, "a gateway running on this machine".into()));
@@ -183,6 +196,7 @@ fn stored() -> Option<(String, String)> {
 }
 
 pub fn save_login(base: &str, token: &str) -> Result<PathBuf, String> {
+    let base = check_url(base)?;
     let path = config_file();
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;

@@ -317,13 +317,17 @@ pub fn start_at(
 }
 
 pub fn stop(env: &Env, state: &GatewayState) {
-    if let Some(r) = state.running.lock().unwrap().take() {
-        r.stop.store(true, Ordering::Relaxed);
-    }
+    let Some(r) = state.running.lock().unwrap().take() else {
+        return; // nothing of ours was listening; the record is not ours to touch
+    };
+    r.stop.store(true, Ordering::Relaxed);
     // A recorded port that nothing is listening on would send `osd` to a dead
-    // address; clear it as part of stopping.
+    // address, so clear it — but ONLY if it is still ours. The desktop app and
+    // an `osd server` share this file: whichever bound last owns the record, and
+    // clearing it blindly on the other one's exit would erase a live gateway's
+    // address and leave every CLI on this machine unable to find it.
     let mut persisted = read_persisted(env);
-    if persisted.port.is_some() {
+    if persisted.port == Some(r.port) {
         persisted.port = None;
         let _ = write_persisted(env, &persisted);
     }

@@ -3177,7 +3177,13 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     if (dir && dir !== get().workspace) {
       set({ switching: true });
       try {
-        await setWorkspace(dir).catch(() => {});
+        // The browser follows the session by re-scoping ITSELF (the host's own
+        // active folder is not ours to move). This is not cosmetic: OpenCode
+        // serves each folder from its own instance, so a stream still scoped to
+        // the previous folder delivers NOTHING for this session — the turn runs
+        // and the page shows nothing happening.
+        if (isGatewayWeb) set({ webWorkspace: dir, workspace: dir });
+        else await setWorkspace(dir).catch(() => {});
         // A newer openSession has superseded this one — stop before starting a
         // second, dueling connectRetry. Two reconnect loops tear down each
         // other's in-flight EventSource, leaking half-open sockets until the

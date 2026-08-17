@@ -55,15 +55,52 @@ pub fn run(args: &Args) -> Result<(), String> {
         .map(|p| p.parse::<u16>().map_err(|_| format!("invalid --port {p:?}")))
         .transpose()?;
 
+    // The desktop app and every `osd server` on this machine share one runtime
+    // root, so a second server means a second OpenCode on the same session
+    // database. Measured on 1.18.18 that works — both read and write, and each
+    // sees the other's sessions — but it is not a configuration anyone should
+    // land in by accident, so say it plainly instead of leaving them to wonder
+    // which server their CLI just talked to.
+    if let Some(other) = gateway::read_persisted(&env).port.filter(|p| Some(*p) != requested_port) {
+        eprintln!(
+            "note: another gateway is recorded on port {other} (the desktop app, or another \
+             `osd server`). They share one workspace and one session database."
+        );
+    }
+
     let state = GatewayState::new(Arc::new(assets::Embedded), None);
+
+    if !env.resource_dir().is_dir() {
+        eprintln!(
+            "note: no bundled resources at {} — skills, the goal plugin and the agent \
+             harness will be missing. Point at them with --resources.",
+            env.resource_dir().display()
+        );
+    }
 
     // The sidecar first, so the gateway never answers a request with "runtime
     // not started" during the first seconds.
     eprintln!("Starting the agent runtime…");
     let sidecar = runtime::start_runtime(&env)?;
 
-    let port = gateway::start_at(&env, &state, &persisted, requested_port)?;
-    let workspace = runtime::workspace_dir(&env)?;
+    // From here on the sidecar is OURS to clean up: it is a separate process, so
+    // returning an error without killing it (a port already in use is the easy
+    // way to hit this) would leave an OpenCode running with nothing driving it.
+    let port = match gateway::start_at(&env, &state, &persisted, requested_port) {
+        Ok(port) => port,
+        Err(e) => {
+            runtime::kill_child(env.runtime());
+            return Err(e);
+        }
+    };
+    let workspace = match runtime::workspace_dir(&env) {
+        Ok(dir) => dir,
+        Err(e) => {
+            gateway::shutdown(&env, &state);
+            runtime::kill_child(env.runtime());
+            return Err(e);
+        }
+    };
 
     if assets::is_empty() {
         eprintln!("note: this build carries no web client; /v1 is served, / is not.");

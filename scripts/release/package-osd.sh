@@ -98,7 +98,17 @@ EOF
 archive="$out_dir/osd-$version-$target"
 case "$target" in
   *windows*)
-    (cd "$out_dir" && zip -qr "$(basename "$archive").zip" "$(basename "$stage")")
+    # GitHub's Windows runners ship 7-Zip and PowerShell but NOT `zip`, so this
+    # takes whichever is actually there rather than assuming.
+    if command -v zip > /dev/null 2>&1; then
+      (cd "$out_dir" && zip -qr "$(basename "$archive").zip" "$(basename "$stage")")
+    elif command -v 7z > /dev/null 2>&1; then
+      (cd "$out_dir" && 7z a -bso0 -bsp0 "$(basename "$archive").zip" "$(basename "$stage")" > /dev/null)
+    else
+      powershell.exe -NoProfile -NonInteractive -Command \
+        "Compress-Archive -Path '$stage' -DestinationPath '$archive.zip' -Force"
+    fi
+    [ -f "$archive.zip" ] || { echo "could not create $archive.zip" >&2; exit 1; }
     echo "$archive.zip"
     ;;
   *)

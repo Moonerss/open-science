@@ -178,8 +178,12 @@ fn wait_for_reply(
     before: usize,
 ) -> Result<(), String> {
     /// How long a turn may take to appear before we call it dead on arrival.
-    /// Generous: a first turn can wait on a provider handshake.
-    const START_GRACE: Duration = Duration::from_secs(20);
+    /// The runtime writes the assistant message when the turn STARTS — measured
+    /// at 12 ms after the user's message on a live server, not when the first
+    /// token arrives — so this only has to cover model resolution and a provider
+    /// handshake. Generous anyway: the cost of being wrong is calling a running
+    /// turn dead, which is worse than waiting.
+    const START_GRACE: Duration = Duration::from_secs(45);
 
     let timeout = args
         .value("timeout")
@@ -189,6 +193,8 @@ fn wait_for_reply(
     let started = Instant::now();
     let deadline = started + Duration::from_secs(timeout);
     let mut ever_worked = false;
+    let mut warned_about_approval = false;
+    let mut interval = Duration::from_secs(1);
     loop {
         let status = client.get(&format!("/v1/sessions/{session}/status"))?;
         let state = status["state"].as_str().unwrap_or("idle");
@@ -201,9 +207,15 @@ fn wait_for_reply(
         {
             return Ok(());
         }
-        // Idle, nothing new, and long past the point where a live turn would
-        // have shown itself: the runtime accepted the prompt and dropped it.
-        if state == "idle" && !ever_worked && started.elapsed() > START_GRACE {
+        // Idle, the transcript still ends at OUR prompt, and long past the point
+        // where a live turn would have shown itself: the runtime accepted the
+        // prompt and dropped it. The `lastRole` check is what keeps a finished
+        // turn from ever landing here — an answered turn ends on the assistant.
+        if state == "idle"
+            && !ever_worked
+            && status["lastRole"].as_str() == Some("user")
+            && started.elapsed() > START_GRACE
+        {
             return Err(format!(
                 "the turn never started. The prompt is in the transcript with no reply — \
                  usually an unavailable model or provider. Check `osd session show {session}` \
@@ -217,16 +229,28 @@ fn wait_for_reply(
             ));
         }
         // Approvals block a turn forever if nobody answers, so say so rather
-        // than letting --wait look like a hang.
-        if let Ok(pending) = client.get("/v1/permissions") {
-            if pending.as_array().is_some_and(|a| !a.is_empty()) && !args.has("quiet") {
-                eprintln!(
-                    "Waiting on an approval — answer it with `osd permission ls` / \
-                     `osd permission allow <id>`."
-                );
+        // than letting --wait look like a hang — ONCE, and only after the turn
+        // has had a few seconds to get going. Printed every poll it would be
+        // two lines of noise a second for as long as the user takes to answer,
+        // and it costs a request per poll to discover something that does not
+        // change.
+        if !warned_about_approval && !args.has("quiet") && started.elapsed() > Duration::from_secs(5)
+        {
+            if let Ok(pending) = client.get("/v1/permissions") {
+                if pending.as_array().is_some_and(|a| !a.is_empty()) {
+                    warned_about_approval = true;
+                    eprintln!(
+                        "Waiting on an approval — answer it with `osd permission ls` / \
+                         `osd permission allow <id>`."
+                    );
+                }
             }
         }
-        std::thread::sleep(Duration::from_secs(2));
+        // Each poll makes the gateway re-read the session's whole transcript
+        // from the sidecar, so a turn that runs for minutes should not be asked
+        // every two seconds for the whole time. Start responsive, then ease off.
+        std::thread::sleep(interval);
+        interval = (interval + Duration::from_millis(500)).min(Duration::from_secs(5));
     }
 }
 

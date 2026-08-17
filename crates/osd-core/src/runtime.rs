@@ -1244,13 +1244,7 @@ fn spawn_sidecar(env: &Env, port: u16, generation: u64) -> Result<Child, String>
     if let Some(stderr) = child.stderr.take() {
         let env = env.clone();
         std::thread::spawn(move || {
-            use std::io::BufRead;
-            for line in std::io::BufReader::new(stderr).lines().map_while(Result::ok) {
-                let line = line.trim();
-                if !line.is_empty() {
-                    crate::debug_log::append(&env, &format!("[opencode] {line}"));
-                }
-            }
+            drain_stderr(&env, stderr);
             let status = {
                 let mut lifecycle = match env.runtime().lifecycle.lock() {
                     Ok(l) => l,
@@ -1270,6 +1264,64 @@ fn spawn_sidecar(env: &Env, port: u16, generation: u64) -> Result<Child, String>
         });
     }
     Ok(child)
+}
+
+/// Read a sidecar's stderr to EOF, one log line at a time.
+///
+/// Splits on `\r` as well as `\n`, and holds raw BYTES until a delimiter
+/// arrives rather than decoding each read: a progress line that ends in a bare
+/// carriage return would otherwise never be flushed (and would grow a String
+/// without bound), and decoding per chunk mangles any UTF-8 sequence that
+/// straddles a read boundary — a real risk here, since agent output is
+/// routinely non-ASCII. `LINE_CAP` bounds the pathological case of a process
+/// that writes megabytes with no delimiter at all.
+fn drain_stderr<R: std::io::Read>(env: &Env, stderr: R) {
+    use std::io::Read;
+    const LINE_CAP: usize = 64 * 1024;
+
+    let mut reader = std::io::BufReader::new(stderr);
+    let mut chunk = [0u8; 4096];
+    let mut pending: Vec<u8> = Vec::new();
+    let emit = |bytes: &[u8]| {
+        let line = String::from_utf8_lossy(bytes);
+        let line = line.trim();
+        if !line.is_empty() {
+            crate::debug_log::append(env, &format!("[opencode] {line}"));
+        }
+    };
+    loop {
+        let read = match reader.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
+        for &byte in &chunk[..read] {
+            if byte == b'\n' || byte == b'\r' {
+                emit(&pending);
+                pending.clear();
+            } else {
+                pending.push(byte);
+                if pending.len() >= LINE_CAP {
+                    emit(&pending);
+                    pending.clear();
+                }
+            }
+        }
+    }
+    emit(&pending);
+}
+
+/// Kill a sidecar and REAP it.
+///
+/// `std::process::Child::kill` only sends the signal; a child that is never
+/// waited on stays a zombie until this process exits. The desktop restarts the
+/// sidecar on every approval-mode, provider, agent-model and skill change, and
+/// the reconnect loop forces one after 8 failures — so "one zombie per restart"
+/// is a leak that accumulates over a working day. (`tauri_plugin_shell`'s
+/// CommandChild::kill waited internally, which is why nothing needed this
+/// before.) The wait returns at once: the process is already dying.
+fn kill_and_reap(mut child: Child) {
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// How a sidecar ended, for the log: an exit code, or the signal that killed it.
@@ -1303,12 +1355,12 @@ fn ssh_config_path(env: &Env) -> Option<PathBuf> {
 /// a failed restart can never leave a stale "running" marker behind.
 fn restart_sidecar_if_running(env: &Env) -> Result<Option<String>, String> {
     let mut lifecycle = env.runtime().lifecycle.lock().unwrap();
-    let Some(mut child) = lifecycle.child.take() else {
+    let Some(child) = lifecycle.child.take() else {
         lifecycle.url = None;
         return Ok(None);
     };
     lifecycle.url = None;
-    let _ = child.kill();
+    kill_and_reap(child);
 
     let port = *lifecycle.port.get_or_insert_with(free_port);
     lifecycle.generation += 1;
@@ -1331,8 +1383,7 @@ pub fn start_runtime(env: &Env) -> Result<String, String> {
     // Repair any impossible partial state left by an older build or a failed
     // transition before attempting a fresh start.
     if let Some(child) = lifecycle.child.take() {
-        let mut child = child;
-        let _ = child.kill();
+        kill_and_reap(child);
     }
     lifecycle.url = None;
 
@@ -1362,8 +1413,7 @@ pub fn start_runtime(env: &Env) -> Result<String, String> {
 pub fn restart_runtime(env: &Env) -> Result<String, String> {
     let mut lifecycle = env.runtime().lifecycle.lock().unwrap();
     if let Some(child) = lifecycle.child.take() {
-        let mut child = child;
-        let _ = child.kill();
+        kill_and_reap(child);
     }
     lifecycle.url = None;
     lifecycle.port = None;
@@ -1561,8 +1611,7 @@ pub fn write_export_file(
 pub fn stop_runtime(state: &RuntimeState) {
     let mut lifecycle = state.lifecycle.lock().unwrap();
     if let Some(child) = lifecycle.child.take() {
-        let mut child = child;
-        let _ = child.kill();
+        kill_and_reap(child);
     }
     lifecycle.url = None;
 }
@@ -1570,8 +1619,7 @@ pub fn stop_runtime(state: &RuntimeState) {
 pub fn kill_child(state: &RuntimeState) {
     let mut lifecycle = state.lifecycle.lock().unwrap();
     if let Some(child) = lifecycle.child.take() {
-        let mut child = child;
-        let _ = child.kill();
+        kill_and_reap(child);
     }
     lifecycle.url = None;
 }
@@ -1612,6 +1660,76 @@ mod tests {
         assert!(
             offenders.is_empty(),
             "spawn through crate::runtime::quiet_command instead: {offenders:?}"
+        );
+    }
+
+
+    #[test]
+    fn sidecar_stderr_splits_on_carriage_returns_and_survives_chunk_boundaries() {
+        // The old drain split on BOTH \n and \r; a rewrite that only split on
+        // \n would hold a progress line forever (and grow without bound), and
+        // decoding each 4 KiB read separately mangles any multi-byte character
+        // that straddles the boundary — agent output is routinely non-ASCII.
+        let dir = std::env::temp_dir().join(format!("os-drain-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let env = crate::env::Env::new(dir.clone(), dir.join("res"), None, "0.0.0".into());
+
+        // A character deliberately straddling the 4096-byte read boundary.
+        let mut input = "x".repeat(4095);
+        input.push('数');
+        // `step 1` is terminated by a BARE carriage return — the case that only
+        // a \r-aware split separates from what follows it.
+        input.push_str("\nready\nstep 1\rstep 2\ndone\n");
+        super::drain_stderr(&env, std::io::Cursor::new(input.into_bytes()));
+
+        let log = fs::read_to_string(dir.join("debug.log")).expect("debug.log written");
+        // Each log line is "<ts> [opencode] <text>"; compare the text itself, so
+        // a run-together line cannot pass by containing both substrings.
+        let lines: Vec<String> = log
+            .lines()
+            .filter_map(|l| l.split_once("[opencode] ").map(|(_, t)| t.to_string()))
+            .collect();
+        assert!(lines.iter().any(|l| l == "ready"), "{lines:?}");
+        assert!(lines.iter().any(|l| l == "step 1"), "a \\r must end a line: {lines:?}");
+        assert!(lines.iter().any(|l| l == "step 2"), "{lines:?}");
+        assert!(lines.iter().any(|l| l == "done"), "{lines:?}");
+        assert!(!log.contains('\u{fffd}'), "a split character was mangled:\n{log}");
+        // The straddling character survived intact, on its own line.
+        assert!(lines.iter().any(|l| l.ends_with('数')), "{lines:?}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+
+    /// A killed sidecar must be REAPED, not left as a zombie. Unix-only: this is
+    /// where the leak exists, and `ps` is how it is visible.
+    #[cfg(unix)]
+    #[test]
+    fn a_killed_sidecar_leaves_no_zombie() {
+        let child = super::quiet_command("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn a test child");
+        let pid = child.id();
+        super::kill_and_reap(child);
+
+        // A zombie still answers `ps` with state Z; a reaped child answers
+        // nothing at all. Retry briefly: the kill is asynchronous.
+        let mut state = String::new();
+        for _ in 0..50 {
+            let out = super::quiet_command("ps")
+                .args(["-o", "stat=", "-p", &pid.to_string()])
+                .output()
+                .expect("ps runs");
+            state = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if state.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(
+            state.is_empty(),
+            "pid {pid} is still in the process table as {state:?} — it was killed but never waited on"
         );
     }
 

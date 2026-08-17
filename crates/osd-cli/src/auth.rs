@@ -39,6 +39,12 @@ fn set(args: &Args) -> Result<(), String> {
     let model = args.value("model").unwrap_or_default();
     runtime::configure_opencode(&env, provider.clone(), key, model, args.value("base-url"))?;
     println!("Saved the {provider} key for this machine.");
+    // The agent runtime reads its config at startup, and this process is not
+    // the one running it. Saying so beats the user concluding the key was
+    // ignored when the next turn still fails.
+    if osd_core::gateway::read_persisted(&env).port.is_some() {
+        println!("A server is running here — restart it for the key to take effect.");
+    }
     if args.value("model").is_none() {
         println!("Pick a default model with --model <provider/model>, or per turn with `osd session send --model`.");
     }
