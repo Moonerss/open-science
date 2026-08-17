@@ -11,6 +11,15 @@ pub use osd_core::artifact_file::{
     locate_under, mime_for, resolve_under, ArtifactFile, DirEntry, NotebookEntry,
 };
 
+/// Windows only — `reveal_impl` below hands Explorer a plain path, never the
+/// `\\?\` verbatim form `canonicalize()` produces (Explorer rejects it). This
+/// re-export is cfg'd because an unconditional one warns as unused everywhere
+/// else, and trimming it on that advice is exactly how it went missing: the
+/// Windows build then failed to compile, which no macOS or Linux build could
+/// have shown.
+#[cfg(target_os = "windows")]
+pub use osd_core::artifact_file::native_path;
+
 /// The folder tree a file command operates in: the ACTIVE session workspace
 /// (default) or the base folder every session workspace is created under.
 pub fn scope_root(app: &AppHandle, root: Option<&str>) -> Result<PathBuf, String> {
