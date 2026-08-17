@@ -137,7 +137,7 @@ pub fn set_permission_mode(existing: &str, mode: &str) -> Result<String, String>
     let mut root: Value = if existing.trim().is_empty() {
         json!({})
     } else {
-        serde_json::from_str(existing).map_err(|e| format!("invalid existing config: {e}"))?
+        parse_config(existing).map_err(|e| format!("invalid existing config: {e}"))?
     };
     if !root.is_object() {
         root = json!({});
@@ -157,7 +157,7 @@ pub fn set_permission_mode(existing: &str, mode: &str) -> Result<String, String>
 /// Additive: only the missing key is inserted, and re-running changes nothing.
 pub fn migrate_external_directory(existing: &str) -> Option<String> {
     let mode = permission_mode_of(existing)?;
-    let mut root: Value = serde_json::from_str(existing).ok()?;
+    let mut root: Value = read_config(existing)?;
     let permission = root.get_mut("permission")?.as_object_mut()?;
     if permission.contains_key("external_directory") {
         return None;
@@ -179,7 +179,7 @@ pub fn migrate_browser_permission(existing: &str) -> Option<String> {
     if permission_mode_of(existing)? != MODE_APPROVE {
         return None;
     }
-    let mut root: Value = serde_json::from_str(existing).ok()?;
+    let mut root: Value = read_config(existing)?;
     let permission = root.get_mut("permission")?.as_object_mut()?;
     let key = browser_tools_key();
     if permission.contains_key(&key) {
@@ -204,7 +204,7 @@ pub fn seed_default_permission(existing: &str) -> Option<String> {
 /// the new entry if both exist, enforce the app-owned lifecycle environment,
 /// and hide that incompatible skill while the connector is configured.
 pub fn migrate_browser_integration(existing: &str) -> Option<String> {
-    let mut root: Value = serde_json::from_str(existing).ok()?;
+    let mut root: Value = read_config(existing)?;
     let obj = root.as_object_mut()?;
     let mcp = obj.get_mut("mcp")?.as_object_mut()?;
     let mut changed = false;
@@ -273,7 +273,7 @@ pub fn ensure_browser_mcp_proxy(
     proxy_bin: &str,
     agent_browser_bin: &str,
 ) -> Option<String> {
-    let mut root: Value = serde_json::from_str(existing).ok()?;
+    let mut root: Value = read_config(existing)?;
     let server = root
         .get_mut("mcp")?
         .get_mut(BROWSER_MCP_ID)?
@@ -306,7 +306,7 @@ pub fn ensure_browser_mcp_proxy(
 /// True only for an existing app connector that predates its private
 /// namespace. Startup uses this to close the old default daemon exactly once.
 pub fn browser_uses_legacy_namespace(existing: &str) -> bool {
-    let Ok(root) = serde_json::from_str::<Value>(existing) else {
+    let Ok(root) = parse_config(existing) else {
         return false;
     };
     let Some(mcp) = root.get("mcp").and_then(Value::as_object) else {
@@ -330,7 +330,7 @@ pub fn browser_uses_legacy_namespace(existing: &str) -> bool {
 /// The approval mode a config encodes: None when the `permission` key was
 /// never written (first run — the caller seeds the "approve" default).
 pub fn permission_mode_of(existing: &str) -> Option<&'static str> {
-    let root: Value = serde_json::from_str(existing).ok()?;
+    let root: Value = read_config(existing)?;
     let permission = root.get("permission")?;
     if permission.get("bash").is_some_and(|b| b.is_object()) {
         Some(MODE_APPROVE)
@@ -351,7 +351,7 @@ pub fn merge_config(
     let mut root: Value = if existing.trim().is_empty() {
         json!({})
     } else {
-        serde_json::from_str(existing).map_err(|e| format!("invalid existing config: {e}"))?
+        parse_config(existing).map_err(|e| format!("invalid existing config: {e}"))?
     };
     if !root.is_object() {
         root = json!({});
@@ -403,7 +403,7 @@ fn ensure_named_plugin(existing: &str, plugin_path: &str, filename: &str) -> Opt
     let mut root: Value = if existing.trim().is_empty() {
         json!({})
     } else {
-        serde_json::from_str(existing).ok()?
+        read_config(existing)?
     };
     if !root.is_object() {
         root = json!({});
@@ -436,17 +436,128 @@ pub fn ensure_browser_guard_plugin(existing: &str, plugin_path: &str) -> Option<
 /// own memory file without any per-project config.
 pub const PROJECT_MEMORY_FILE: &str = "AGENTS.md";
 
-fn as_object(existing: &str) -> Value {
-    let mut root: Value = if existing.trim().is_empty() {
-        json!({})
-    } else {
-        serde_json::from_str(existing).unwrap_or_else(|_| json!({}))
-    };
-    if !root.is_object() {
-        root = json!({});
+/// Copy one JSON string literal, starting at the opening quote, byte for byte.
+/// Returns the index just past the closing quote. Comment and trailing-comma
+/// removal must never look inside a string — this config is full of URLs, and
+/// `"https://opencode.ai/config.json"` contains a `//` that is not a comment.
+fn copy_string_literal(src: &[u8], mut i: usize, out: &mut Vec<u8>) -> usize {
+    out.push(src[i]);
+    i += 1;
+    while i < src.len() {
+        let byte = src[i];
+        out.push(byte);
+        i += 1;
+        if byte == b'\\' {
+            if i < src.len() {
+                out.push(src[i]);
+                i += 1;
+            }
+        } else if byte == b'"' {
+            break;
+        }
     }
-    root
+    i
 }
+
+/// Reduce JSONC to JSON: drop `//` and `/* */` comments and commas that only
+/// precede a closing brace or bracket. Byte-wise, and every byte outside a
+/// comment is copied unchanged, so multi-byte UTF-8 passes through intact.
+fn strip_jsonc(input: &str) -> String {
+    let src = input.as_bytes();
+    let mut uncommented: Vec<u8> = Vec::with_capacity(src.len());
+    let mut i = 0;
+    while i < src.len() {
+        match src[i] {
+            b'"' => i = copy_string_literal(src, i, &mut uncommented),
+            b'/' if src.get(i + 1) == Some(&b'/') => {
+                while i < src.len() && src[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if src.get(i + 1) == Some(&b'*') => {
+                i += 2;
+                while i + 1 < src.len() && !(src[i] == b'*' && src[i + 1] == b'/') {
+                    i += 1;
+                }
+                i = src.len().min(i + 2);
+            }
+            byte => {
+                uncommented.push(byte);
+                i += 1;
+            }
+        }
+    }
+
+    let mut out: Vec<u8> = Vec::with_capacity(uncommented.len());
+    let mut i = 0;
+    while i < uncommented.len() {
+        if uncommented[i] == b'"' {
+            i = copy_string_literal(&uncommented, i, &mut out);
+            continue;
+        }
+        if uncommented[i] == b',' {
+            let mut j = i + 1;
+            while j < uncommented.len() && uncommented[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if matches!(uncommented.get(j), Some(b'}') | Some(b']')) {
+                i += 1;
+                continue;
+            }
+        }
+        out.push(uncommented[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| input.to_string())
+}
+
+/// Parse the runtime config into an object. Three outcomes, and they must stay
+/// distinct: an empty file is a fresh profile, a readable file is itself, and a
+/// file we cannot read is one that must not be touched.
+///
+/// The file is read by whichever name exists, `opencode.json` or the
+/// `opencode.jsonc` the server may rewrite it as, so JSONC is tolerated on the
+/// way in and normalized on the way out. What remains unreadable after that is
+/// reported, never treated as empty: every caller writes the value back, so
+/// substituting `{}` would replace the user's provider keys, MCP servers and
+/// approval mode with a stub — and OpenCode, which parses JSONC itself, would
+/// keep loading the file we just destroyed.
+fn parse_config(existing: &str) -> Result<Value, String> {
+    // A UTF-8 BOM is an encoding marker, not content, and serde_json rejects a
+    // document that starts with one ("expected value at line 1 column 1").
+    // Windows puts it there by default — PowerShell's `Set-Content -Encoding
+    // UTF8` and Notepad both do, verified on a Windows 11 box — so a user who
+    // opens this file to look at it can make the app unable to read it again.
+    let existing = existing.strip_prefix('\u{feff}').unwrap_or(existing);
+    if existing.trim().is_empty() {
+        return Ok(json!({}));
+    }
+    let parsed = serde_json::from_str::<Value>(existing)
+        .or_else(|_| serde_json::from_str::<Value>(&strip_jsonc(existing)));
+    match parsed {
+        Ok(value) if value.is_object() => Ok(value),
+        Ok(_) => Err("config is not a JSON object".to_string()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+/// `parse_config` for the callers that answer with `None`. The failure is
+/// logged rather than swallowed: leaving the config alone is the safe choice,
+/// but a config the app can no longer edit stops every later repair silently —
+/// including the plugin registration the browser lease depends on (#116).
+fn read_config(existing: &str) -> Option<Value> {
+    match parse_config(existing) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            eprintln!(
+                "opencode config is unreadable and was left untouched: {error} \
+                 — no app setting can be applied until it parses"
+            );
+            None
+        }
+    }
+}
+
 
 /// Turn OpenCode's automatic context compaction on the first time we see a
 /// config without a `compaction` block. Without it a long conversation ends in
@@ -455,7 +566,7 @@ fn as_object(existing: &str) -> Value {
 /// relying on the runtime default, and never overridden once the key exists —
 /// a user who turned it off keeps it off. Returns None when nothing to do.
 pub fn seed_compaction(existing: &str) -> Option<String> {
-    let mut root = as_object(existing);
+    let mut root = read_config(existing)?;
     let obj = root.as_object_mut().unwrap();
     if obj.contains_key("compaction") {
         return None;
@@ -467,7 +578,9 @@ pub fn seed_compaction(existing: &str) -> Option<String> {
 /// Whether the memory layers are applied to conversations: true when BOTH the
 /// global memory file and the per-project entry are listed in `instructions`.
 pub fn memory_enabled(existing: &str, global_path: &str) -> bool {
-    let root = as_object(existing);
+    let Some(root) = read_config(existing) else {
+        return false;
+    };
     let Some(arr) = root.get("instructions").and_then(|v| v.as_array()) else {
         return false;
     };
@@ -482,7 +595,7 @@ pub fn set_memory_enabled(existing: &str, global_path: &str, enabled: bool) -> O
     if memory_enabled(existing, global_path) == enabled {
         return None;
     }
-    let mut root = as_object(existing);
+    let mut root = read_config(existing)?;
     let obj = root.as_object_mut().unwrap();
     let list = obj.entry("instructions").or_insert_with(|| json!([]));
     if !list.is_array() {
@@ -508,7 +621,9 @@ pub fn set_memory_enabled(existing: &str, global_path: &str, enabled: bool) -> O
 /// One string field of `agent.<name>`, for every agent that sets it. Agents with
 /// no override are absent — they follow the global default.
 fn agent_field(existing: &str, field: &str) -> Vec<(String, String)> {
-    let root = as_object(existing);
+    let Some(root) = read_config(existing) else {
+        return Vec::new();
+    };
     let Some(agents) = root.get("agent").and_then(|v| v.as_object()) else {
         return Vec::new();
     };
@@ -527,7 +642,9 @@ fn agent_field(existing: &str, field: &str) -> Vec<(String, String)> {
 /// own is touched, and the agent wrapper is removed only once it empties, so an
 /// agent config the user wrote themselves survives.
 fn set_agent_field(existing: &str, agent: &str, field: &str, value: Option<&str>) -> String {
-    let mut root = as_object(existing);
+    let Some(mut root) = read_config(existing) else {
+        return existing.to_string();
+    };
     let obj = root.as_object_mut().unwrap();
     let agents = obj.entry("agent").or_insert_with(|| json!({}));
     if !agents.is_object() {
@@ -590,6 +707,111 @@ pub fn set_agent_variant(existing: &str, agent: &str, variant: Option<&str>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A config the app cannot read must survive untouched. Before this, the
+    /// lenient parse behind `seed_compaction` turned an unparseable file into
+    /// `{}` and wrote it back, so one launch replaced the user's provider keys,
+    /// MCP servers, approval mode and model with a three-key stub (#116).
+    #[test]
+    fn an_unreadable_config_is_never_overwritten() {
+        // Not JSONC — genuinely broken, and it must stay exactly as it is.
+        let broken = r#"{"model": "openai/gpt-5.6", "provider": {"openai": "#;
+        assert!(seed_compaction(broken).is_none());
+        assert!(set_memory_enabled(broken, "/m/MEMORY.md", true).is_none());
+        assert!(ensure_goal_plugin(broken, "/g/goal-plugin.server.js").is_none());
+        assert!(ensure_browser_guard_plugin(broken, "/g/browser-guard.ts").is_none());
+        assert!(migrate_external_directory(broken).is_none());
+        assert!(migrate_browser_integration(broken).is_none());
+        assert!(ensure_browser_mcp_proxy(broken, "/p", "/a").is_none());
+        assert_eq!(set_agent_model(broken, "build", Some("openai/x")), broken);
+        assert!(agent_models(broken).is_empty());
+        assert!(set_permission_mode(broken, MODE_APPROVE).is_err());
+        // An empty file is a fresh profile, not an unreadable one.
+        assert!(seed_compaction("").is_some());
+    }
+
+    /// The file is read under whichever name exists, and OpenCode may rewrite
+    /// it as `opencode.jsonc`. JSONC therefore has to survive the round trip
+    /// instead of stopping every repair the app makes on startup.
+    #[test]
+    fn jsonc_config_is_read_and_normalized() {
+        let jsonc = r#"// runtime profile
+{
+  "$schema": "https://opencode.ai/config.json", // not a comment
+  "model": "openai/gpt-5.6",
+  /* block */
+  "provider": {"openai": {"options": {"apiKey": "sk-SECRET"}}},
+  "mcp": {"open-science-browser": {"enabled": true}},
+  "plugin": ["/app/goal-plugin.server.js",],
+}"#;
+        let out = ensure_browser_guard_plugin(jsonc, "/g/browser-guard.ts")
+            .expect("a JSONC config must still be repairable");
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(
+            v["plugin"],
+            json!(["/app/goal-plugin.server.js", "/g/browser-guard.ts"])
+        );
+        // Everything else survives, including the `//` inside a string value.
+        assert_eq!(v["$schema"], json!("https://opencode.ai/config.json"));
+        assert_eq!(v["provider"]["openai"]["options"]["apiKey"], json!("sk-SECRET"));
+        assert_eq!(v["mcp"]["open-science-browser"]["enabled"], json!(true));
+        assert_eq!(v["model"], json!("openai/gpt-5.6"));
+    }
+
+    #[test]
+    fn strip_jsonc_leaves_string_contents_alone() {
+        // Escaped quotes must not end the literal early, or the `//` and the
+        // trailing comma inside these values would be eaten as syntax.
+        let input = r#"{"a": "http://x/y", "b": "sees \" then // and /* */", "c": [1,],}"#;
+        let v: Value = serde_json::from_str(&strip_jsonc(input)).unwrap();
+        assert_eq!(v["a"], json!("http://x/y"));
+        assert_eq!(v["b"], json!("sees \" then // and /* */"));
+        assert_eq!(v["c"], json!([1]));
+    }
+
+    /// These are the exact bytes PowerShell's `Set-Content -Encoding UTF8`
+    /// produced on a Windows 11 machine: a UTF-8 BOM, CRLF line endings, and a
+    /// trailing newline. Notepad writes the same BOM. serde_json rejects a
+    /// document that starts with one, so without this the app would go
+    /// permanently read-only on its own config the first time a user opened it
+    /// in an editor to check the `plugin` list — while investigating #116.
+    #[test]
+    fn a_windows_written_config_is_still_readable() {
+        let windows_bytes: &[u8] = &[
+            0xef, 0xbb, 0xbf, // UTF-8 BOM
+            b'{', b'"', b'm', b'o', b'd', b'e', b'l', b'"', b':', b' ', b'"', b'x', b'"', b',',
+            b'\r', b'\n', b' ', b'"', b'p', b'l', b'u', b'g', b'i', b'n', b'"', b':', b' ', b'[',
+            b']', b'}', b'\r', b'\n',
+        ];
+        let text = std::str::from_utf8(windows_bytes).unwrap();
+        assert!(
+            serde_json::from_str::<Value>(text).is_err(),
+            "precondition: a BOM is what breaks the plain parse"
+        );
+        let out = ensure_browser_guard_plugin(text, "/g/browser-guard.ts")
+            .expect("a config written by a Windows editor must stay editable");
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["plugin"], json!(["/g/browser-guard.ts"]));
+        assert_eq!(v["model"], json!("x"));
+        // A file holding nothing but a BOM is a fresh profile, not a broken one.
+        assert!(seed_compaction("\u{feff}").is_some());
+    }
+
+    /// CRLF must not change how comments end or how a trailing comma is seen.
+    #[test]
+    fn strip_jsonc_handles_crlf_line_endings() {
+        let input = "{\r\n  \"a\": 1, // note\r\n  \"b\": [2,],\r\n}";
+        let v: Value = serde_json::from_str(&strip_jsonc(input)).unwrap();
+        assert_eq!(v["a"], json!(1));
+        assert_eq!(v["b"], json!([2]));
+    }
+
+    #[test]
+    fn strip_jsonc_preserves_multibyte_values() {
+        let input = "{\"note\": \"中文 — dash\"} // 尾注";
+        let v: Value = serde_json::from_str(&strip_jsonc(input)).unwrap();
+        assert_eq!(v["note"], json!("中文 — dash"));
+    }
 
     #[test]
     fn migrates_legacy_browser_mcp_id_and_adds_owned_lifecycle() {
@@ -1020,3 +1242,4 @@ mod tests {
         assert_eq!(permission_mode_of(&full), Some(MODE_FULL));
     }
 }
+

@@ -43,6 +43,23 @@ tools, and CLI tools like `gh` or `curl`, before this — a browser is for pages
 that genuinely need one (JavaScript rendering, a signed-in session, interaction, \
 a screenshot).";
 
+/// Returned when a browser call arrives with no conversation lease. That has
+/// exactly one cause — the guard plugin did not run — because the lease is not
+/// something a model can supply or omit: the proxy strips `session` from every
+/// advertised schema, and the plugin re-adds it after validation. So this text
+/// names the cause and where to look, rather than restating the symptom. It
+/// reached users as a bare "trusted conversation lease was not supplied", which
+/// told them nothing they could act on and cost issue #116 three rounds.
+const NO_LEASE_ERROR: &str = "Browser control is not active: the browser-guard \
+plugin did not attach this conversation's lease, so the call was refused. The \
+app deploys `browser-guard.ts` into its runtime profile and registers it in the \
+`plugin` list on every launch. Tell the user to restart the app, and if that \
+does not clear it, to check that the config file in the runtime profile \
+(`xdg-config/opencode/opencode.json` or `.jsonc`) still lists a path ending in \
+`browser-guard.ts`, and that `xdg-data/opencode/log/opencode.log` has no \
+`failed to load plugin` line. Do not retry the browser; use the built-in fetch \
+and search tools instead.";
+
 const BLOCKED_TOOLS: &[&str] = &[
     // These can enumerate/switch another conversation or attach to a browser
     // that the user opened outside Open Science Desktop.
@@ -134,7 +151,7 @@ fn run_inner(mut args: Vec<OsString>) -> Result<(), String> {
                         &mut stdout,
                         &request_tool_result(
                             &request,
-                            json!({ "error": "trusted conversation lease was not supplied" }),
+                            json!({ "error": NO_LEASE_ERROR }),
                             true,
                         ),
                     )?;
@@ -368,7 +385,7 @@ fn inventory_response(request: &Value, agent_browser: &OsString) -> Value {
         .and_then(Value::as_str);
     let result = lease
         .filter(|value| valid_lease(value))
-        .ok_or_else(|| "trusted conversation lease was not supplied".to_string())
+        .ok_or_else(|| NO_LEASE_ERROR.to_string())
         .and_then(|lease| browser_inventory(agent_browser, lease));
     match result {
         Ok(inventory) => tool_response(id, inventory, false),
@@ -592,6 +609,39 @@ fn run_agent_json(agent_browser: &OsString, args: &[&str]) -> Result<Value, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A missing lease means the guard plugin did not run — nothing a user or a
+    /// model chose. The refusal has to say that and say where to look, because
+    /// the bare "trusted conversation lease was not supplied" it used to return
+    /// sent a reporter through two clean reinstalls that could not have helped
+    /// (#116). No lease is inspected here, so no agent-browser call is made.
+    #[test]
+    fn refusing_a_leaseless_call_names_the_cause_and_where_to_look() {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": { "name": INVENTORY_TOOL, "arguments": {} }
+        });
+        let response = inventory_response(&request, &OsString::from("agent-browser"));
+        assert_eq!(response.pointer("/result/isError"), Some(&json!(true)));
+        let text = response
+            .pointer("/result/content/0/text")
+            .and_then(Value::as_str)
+            .unwrap();
+        assert!(text.contains("browser-guard"), "names the plugin: {text}");
+        assert!(text.contains("plugin"), "names the config list: {text}");
+        assert!(text.contains("opencode.log"), "names the log: {text}");
+        // A lease the model invented must be refused the same way.
+        let forged = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": { "name": INVENTORY_TOOL, "arguments": { "session": "not-a-lease" } }
+        });
+        let response = inventory_response(&forged, &OsString::from("agent-browser"));
+        assert_eq!(response.pointer("/result/isError"), Some(&json!(true)));
+    }
 
     #[test]
     fn tool_schema_hides_ownership_escape_hatches() {
