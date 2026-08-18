@@ -379,14 +379,16 @@
   },
   "cli": {
     "title": "Terminal-Befehl (osd)",
-    "hint": "Steuere diese Werkbank vom Terminal aus oder betreibe sie ohne Oberfläche auf einer Maschine ohne Bildschirm. Der Befehl liegt in der App — hier wird nur ein kleiner Wrapper in deinen PATH gelegt.",
-    "install": "Befehl installieren",
-    "reinstall": "Auf diese App zeigen lassen",
-    "installed": "Installiert — öffne ein neues Terminal und führe `osd status` aus.",
-    "notInstalled": "Noch nicht installiert.",
+    "hint": "Die Werkbank im Terminal — Sitzungen, Projekte, Dateien und ein Server ohne Oberfläche für Maschinen ohne Bildschirm. Kommt mit der App, ohne Einrichtung.",
+    "readyPath": "Bereit — führe `osd` in einem neuen Terminal aus.",
+    "readyProfile": "Bereit — in {{profile}} eingetragen. Führe `osd` in einem neuen Terminal aus.",
+    "readyEnvironment": "Bereit — zu deinem Benutzer-PATH hinzugefügt. Führe `osd` in einem neuen Terminal aus.",
+    "unreachable": "Installiert, aber über deinen PATH nicht erreichbar. Füge diese Zeile in dein Shell-Profil ein:",
+    "notInstalled": "Nicht installiert. Nimm den Knopf oder starte die App neu.",
     "unavailable": "Dieser Build enthält den Befehl osd nicht.",
     "occupied": "Unter diesem Namen liegt bereits eine Datei, die nicht von dieser App stammt — benenne sie zuerst um.",
-    "pathHint": "Dieser Ordner ist noch nicht in deinem PATH. Füge diese Zeile in dein Shell-Profil ein und öffne ein neues Terminal:",
+    "install": "Befehl installieren",
+    "repair": "Neu installieren",
     "error": "Installation des osd-Befehls fehlgeschlagen"
   },
   "memory": {

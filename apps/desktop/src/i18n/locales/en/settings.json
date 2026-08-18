@@ -379,14 +379,16 @@
   },
   "cli": {
     "title": "Terminal command (osd)",
-    "hint": "Drive this workbench from a terminal, or serve it headless on a machine with no screen. The command ships inside the app — this puts a small wrapper on your PATH.",
-    "install": "Install command",
-    "reinstall": "Point it at this app",
-    "installed": "Installed — open a new terminal and run `osd status`.",
-    "notInstalled": "Not installed yet.",
+    "hint": "The workbench from a terminal — sessions, projects, files, and a headless server for a machine with no screen. Installed with the app; no setup.",
+    "readyPath": "Ready — run `osd` in a new terminal.",
+    "readyProfile": "Ready — added to {{profile}}. Run `osd` in a new terminal.",
+    "readyEnvironment": "Ready — added to your user PATH. Run `osd` in a new terminal.",
+    "unreachable": "Installed, but nothing on your PATH reaches it. Add this line to your shell profile:",
+    "notInstalled": "Not installed. Use the button, or restart the app.",
     "unavailable": "This build does not carry the osd command.",
     "occupied": "A file this app did not write already has that name — rename it first.",
-    "pathHint": "That folder is not on your PATH yet. Add this line to your shell profile, then open a new terminal:",
+    "install": "Install command",
+    "repair": "Reinstall",
     "error": "Installing the osd command failed"
   },
   "memory": {

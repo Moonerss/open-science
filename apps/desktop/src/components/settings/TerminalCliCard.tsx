@@ -6,14 +6,16 @@ import { chipCls } from "@/components/settings/inputCls";
 import { toast } from "@/lib/toast";
 import { getCliShimStatus, installCliShim, isTauri, type CliShimStatus } from "@/lib/tauri";
 
-/** Where the wrapper goes. Shown while the real answer is still on its way from
- *  the backend, which resolves the same path from the user's home directory. */
+/** Where the wrapper goes. Stands in only while the backend's answer — which
+ *  resolves the same path from the user's home — is still on its way. */
 const DEFAULT_SHIM = "~/.local/bin/osd";
 
-/** Settings → Remote Access → the terminal command. The installer already
- *  carries `osd` next to the app binary; this puts a wrapper on the user's PATH
- *  (a wrapper, not a symlink — see `cli_shim.rs`) and, when that folder is not
- *  on PATH, shows the one line that fixes it. The app never edits PATH itself. */
+/** Settings → Remote Access → the terminal command.
+ *
+ *  The app installs `osd` on launch, so this card mostly REPORTS: where the
+ *  command is, and what (if anything) was touched to make a terminal find it.
+ *  The button is for repair — an app that moved, or a launch whose attempt
+ *  failed. The line to paste appears only when nothing automatic worked. */
 export function TerminalCliCard() {
   const { t } = useTranslation(["settings"]);
   const [status, setStatus] = useState<CliShimStatus | null>(null);
@@ -40,7 +42,6 @@ export function TerminalCliCard() {
       try {
         const next = await installCliShim();
         if (next) setStatus(next);
-        toast.success(t("cli.installed"));
       } catch (e) {
         toast.error(`${t("cli.error")}: ${String(e)}`);
       } finally {
@@ -52,6 +53,23 @@ export function TerminalCliCard() {
   if (!isTauri) return null;
 
   const available = Boolean(status?.binary);
+  /** One line saying where things stand — the state, not the mechanics. */
+  const state = () => {
+    if (!available) return t("cli.unavailable");
+    if (status?.occupied) return t("cli.occupied");
+    if (!status?.installed) return t("cli.notInstalled");
+    switch (status.route) {
+      case "already-on-path":
+        return t("cli.readyPath");
+      case "shell-profile":
+        return t("cli.readyProfile", { profile: status.profile ?? "" });
+      case "user-environment":
+        return t("cli.readyEnvironment");
+      default:
+        return t("cli.unreachable");
+    }
+  };
+
   return (
     <Section title={t("cli.title")} hint={t("cli.hint")} flush>
       <Row
@@ -61,15 +79,7 @@ export function TerminalCliCard() {
             <code className="font-mono text-[12.5px]">{status?.shim ?? DEFAULT_SHIM}</code>
           </span>
         }
-        hint={
-          !available
-            ? t("cli.unavailable")
-            : status?.occupied
-              ? t("cli.occupied")
-              : status?.installed
-                ? t("cli.installed")
-                : t("cli.notInstalled")
-        }
+        hint={state()}
         control={
           <button
             type="button"
@@ -80,7 +90,7 @@ export function TerminalCliCard() {
             {status?.installed ? (
               <span className="inline-flex items-center gap-1.5">
                 <Check size={13} />
-                {t("cli.reinstall")}
+                {t("cli.repair")}
               </span>
             ) : (
               t("cli.install")
@@ -88,26 +98,21 @@ export function TerminalCliCard() {
           </button>
         }
       >
-        {/* A wrapper nobody can reach is not installed in any useful sense, so
-            the PATH line is shown whenever the folder is missing from PATH —
-            before installing as much as after. */}
-        {available && status?.pathHint && (
-          <div className="mt-2.5">
-            <p className="text-xs leading-relaxed text-muted">{t("cli.pathHint")}</p>
-            <div className="mt-2 flex items-center gap-2">
-              <code className="flex-1 overflow-x-auto whitespace-pre rounded-input bg-surface-2 px-3 py-2 font-mono text-[12.5px] text-text">
-                {status.pathHint}
-              </code>
-              <button
-                type="button"
-                className="rounded-input p-2 text-muted transition-colors hover:bg-surface-2 hover:text-text"
-                aria-label={t("remote.copy")}
-                title={t("remote.copy")}
-                onClick={() => void copy(status.pathHint ?? "")}
-              >
-                <Copy size={15} />
-              </button>
-            </div>
+        {/* Only when PATH could not be arranged for them. */}
+        {status?.pathHint && (
+          <div className="mt-2.5 flex items-center gap-2">
+            <code className="flex-1 overflow-x-auto whitespace-pre rounded-input bg-surface-2 px-3 py-2 font-mono text-[12.5px] text-text">
+              {status.pathHint}
+            </code>
+            <button
+              type="button"
+              className="rounded-input p-2 text-muted transition-colors hover:bg-surface-2 hover:text-text"
+              aria-label={t("remote.copy")}
+              title={t("remote.copy")}
+              onClick={() => void copy(status.pathHint ?? "")}
+            >
+              <Copy size={15} />
+            </button>
           </div>
         )}
       </Row>

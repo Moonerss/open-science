@@ -311,29 +311,34 @@ export async function acpServerScript(): Promise<string | null> {
   return await invoke<string | null>("acp_server_script");
 }
 
-/** Where the bundled `osd` command is, and whether the PATH wrapper is in
- *  place. See `cli_shim.rs` for why it is a wrapper and not a symlink. */
+/** How `osd` became reachable from a terminal — see `cli_shim.rs`. */
+export type CliPathRoute = "already-on-path" | "shell-profile" | "user-environment" | "unreachable";
+
+/** Where the bundled `osd` command is, and what was touched to make a terminal
+ *  find it. The app arranges this on launch; the UI only reports it. */
 export interface CliShimStatus {
   /** The bundled `osd` beside the app binary, or null in a build without it. */
   binary: string | null;
-  /** Where the wrapper goes, whether or not it is there yet. */
+  /** The wrapper's path, whether or not it is there yet. */
   shim: string;
   installed: boolean;
   /** A file that is not ours already has that name. */
   occupied: boolean;
-  onPath: boolean;
-  /** The line that adds the wrapper's folder to PATH, when it is missing. */
+  route: CliPathRoute;
+  /** The profile file that was extended, when that is how PATH was arranged. */
+  profile: string | null;
+  /** Shown only when nothing automatic worked: the line to add by hand. */
   pathHint: string | null;
 }
 
-/** Current state of the `osd` PATH wrapper (desktop only; null in browser). */
+/** Current state of the `osd` command (desktop only; null in browser). */
 export async function getCliShimStatus(): Promise<CliShimStatus | null> {
   if (!isTauri) return null;
   const { invoke } = await import("@tauri-apps/api/core");
   return await invoke<CliShimStatus>("cli_shim_status");
 }
 
-/** Write the `osd` wrapper into `~/.local/bin`, and report the state after. */
+/** Redo the install — for an app that moved, or a launch that failed. */
 export async function installCliShim(): Promise<CliShimStatus | null> {
   if (!isTauri) return null;
   const { invoke } = await import("@tauri-apps/api/core");

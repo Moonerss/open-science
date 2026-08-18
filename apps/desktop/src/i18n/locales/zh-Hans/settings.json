@@ -377,14 +377,16 @@
   },
   "cli": {
     "title": "终端命令（osd）",
-    "hint": "在终端里驱动这个工作台，或在没有显示器的机器上以无界面方式运行。命令随应用一起安装——这里只是把一个小包装脚本放到你的 PATH 上。",
-    "install": "安装命令",
-    "reinstall": "指向当前这个应用",
-    "installed": "已安装——打开一个新终端，运行 `osd status`。",
-    "notInstalled": "尚未安装。",
+    "hint": "在终端里用这个工作台——会话、项目、文件，以及给没有显示器的机器用的无界面服务端。随应用一起装好，无需配置。",
+    "readyPath": "可用——打开一个新终端，运行 `osd`。",
+    "readyProfile": "可用——已写入 {{profile}}。打开一个新终端，运行 `osd`。",
+    "readyEnvironment": "可用——已加入你的用户 PATH。打开一个新终端，运行 `osd`。",
+    "unreachable": "已安装，但你的 PATH 到不了它。把这行加进 shell 配置：",
+    "notInstalled": "尚未安装。点按钮，或重启应用。",
     "unavailable": "这个构建没有携带 osd 命令。",
     "occupied": "该名字下已有一个不是本应用写入的文件——请先重命名。",
-    "pathHint": "该目录还不在你的 PATH 上。把这行加进 shell 配置，然后打开一个新终端：",
+    "install": "安装命令",
+    "repair": "重新安装",
     "error": "安装 osd 命令失败"
   },
   "memory": {

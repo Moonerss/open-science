@@ -379,14 +379,16 @@
   },
   "cli": {
     "title": "Commande de terminal (osd)",
-    "hint": "Pilotez cet atelier depuis un terminal, ou servez-le sans interface sur une machine sans écran. La commande est livrée dans l'application — ceci ne fait que placer un petit script d'appel dans votre PATH.",
-    "install": "Installer la commande",
-    "reinstall": "La pointer vers cette application",
-    "installed": "Installée — ouvrez un nouveau terminal et lancez `osd status`.",
-    "notInstalled": "Pas encore installée.",
+    "hint": "L'atelier depuis un terminal : sessions, projets, fichiers, et un serveur sans interface pour une machine sans écran. Installée avec l'application, sans réglage.",
+    "readyPath": "Prête — lancez `osd` dans un nouveau terminal.",
+    "readyProfile": "Prête — ajoutée à {{profile}}. Lancez `osd` dans un nouveau terminal.",
+    "readyEnvironment": "Prête — ajoutée à votre PATH utilisateur. Lancez `osd` dans un nouveau terminal.",
+    "unreachable": "Installée, mais rien dans votre PATH ne l'atteint. Ajoutez cette ligne à votre profil shell :",
+    "notInstalled": "Pas installée. Utilisez le bouton, ou redémarrez l'application.",
     "unavailable": "Cette version n'embarque pas la commande osd.",
     "occupied": "Un fichier que cette application n'a pas écrit porte déjà ce nom — renommez-le d'abord.",
-    "pathHint": "Ce dossier n'est pas encore dans votre PATH. Ajoutez cette ligne à votre profil shell, puis ouvrez un nouveau terminal :",
+    "install": "Installer la commande",
+    "repair": "Réinstaller",
     "error": "L'installation de la commande osd a échoué"
   },
   "memory": {

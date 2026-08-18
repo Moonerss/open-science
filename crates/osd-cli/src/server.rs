@@ -15,12 +15,26 @@ use osd_core::runtime;
 use crate::args::Args;
 use crate::assets;
 
+/// The port of a gateway that is recorded AND still answering — the desktop app,
+/// usually. None when the record is empty or stale.
+fn live_other_gateway(env: &osd_core::Env) -> Option<u16> {
+    gateway::read_persisted(env)
+        .port
+        .filter(|p| gateway::port_is_answering(*p))
+}
+
 pub fn run(args: &Args) -> Result<(), String> {
     let env = crate::env(args)?;
 
     // A workspace named on the command line becomes the active one, exactly as
     // picking a folder in the app does — so `osd server --workspace ~/proj`
     // opens on that folder and the sidecar starts inside it.
+    //
+    // That record is shared with the desktop app, and there is exactly one of
+    // it. Repointing it while the app is running moved the app's own workspace
+    // out from under it — observed here: the app was left "open" on a temp
+    // folder and its web client answered 500 for the session it was showing. So
+    // a live gateway keeps its workspace, and this refuses instead.
     if let Some(dir) = args.value("workspace") {
         let path = PathBuf::from(&dir);
         let absolute = if path.is_absolute() {
@@ -28,7 +42,21 @@ pub fn run(args: &Args) -> Result<(), String> {
         } else {
             std::env::current_dir().map_err(|e| e.to_string())?.join(path)
         };
-        runtime::set_workspace(&env, absolute.to_string_lossy().to_string())?;
+        let requested = absolute.to_string_lossy().to_string();
+        if let Some(live) = live_other_gateway(&env) {
+            let current = runtime::workspace_dir(&env)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if current != requested {
+                return Err(format!(
+                    "another gateway is running on port {live} (the desktop app, or another \
+                     `osd server`) and this machine has one active workspace, currently {current}. \
+                     Repointing it would move that gateway's workspace too. Quit it first, or \
+                     drive it instead: osd --gateway http://127.0.0.1:{live} …"
+                ));
+            }
+        }
+        runtime::set_workspace(&env, requested)?;
     }
 
     // Bind first, config second: everything below is written to disk, and a
@@ -60,10 +88,12 @@ pub fn run(args: &Args) -> Result<(), String> {
     // sees the other's sessions — but it is not a configuration anyone should
     // land in by accident, so say it plainly instead of leaving them to wonder
     // which server their CLI just talked to.
-    if let Some(other) = gateway::read_persisted(&env).port.filter(|p| Some(*p) != requested_port) {
+    if let Some(other) = live_other_gateway(&env).filter(|p| Some(*p) != requested_port) {
         eprintln!(
-            "note: another gateway is recorded on port {other} (the desktop app, or another \
-             `osd server`). They share one workspace and one session database."
+            "note: another gateway is already running on port {other} (the desktop app, or \
+             another `osd server`). They share one workspace and one session database, and it \
+             keeps the recorded address — reach THIS server with an explicit \
+             --gateway http://127.0.0.1:<port below>."
         );
     }
 

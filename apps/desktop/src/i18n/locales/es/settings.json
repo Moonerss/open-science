@@ -379,14 +379,16 @@
   },
   "cli": {
     "title": "Comando de terminal (osd)",
-    "hint": "Maneja este taller desde una terminal, o sírvelo sin interfaz en una máquina sin pantalla. El comando viene dentro de la app: esto solo coloca un pequeño envoltorio en tu PATH.",
-    "install": "Instalar el comando",
-    "reinstall": "Apuntarlo a esta app",
-    "installed": "Instalado: abre una terminal nueva y ejecuta `osd status`.",
-    "notInstalled": "Aún no está instalado.",
+    "hint": "El taller desde una terminal: sesiones, proyectos, archivos y un servidor sin interfaz para una máquina sin pantalla. Se instala con la app, sin configurar nada.",
+    "readyPath": "Listo: ejecuta `osd` en una terminal nueva.",
+    "readyProfile": "Listo: añadido a {{profile}}. Ejecuta `osd` en una terminal nueva.",
+    "readyEnvironment": "Listo: añadido a tu PATH de usuario. Ejecuta `osd` en una terminal nueva.",
+    "unreachable": "Instalado, pero nada en tu PATH lo alcanza. Añade esta línea a tu perfil de shell:",
+    "notInstalled": "No instalado. Usa el botón o reinicia la app.",
     "unavailable": "Esta versión no incluye el comando osd.",
     "occupied": "Ya existe un archivo con ese nombre que no escribió esta app: renómbralo primero.",
-    "pathHint": "Esa carpeta todavía no está en tu PATH. Añade esta línea a tu perfil de shell y abre una terminal nueva:",
+    "install": "Instalar el comando",
+    "repair": "Reinstalar",
     "error": "No se pudo instalar el comando osd"
   },
   "memory": {

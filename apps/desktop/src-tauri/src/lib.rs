@@ -99,6 +99,10 @@ pub fn run() {
             }
             // Bring the remote-access gateway back up if the user left it enabled.
             gateway::autostart(app.handle());
+            // Make `osd` work in a terminal without the user arranging anything:
+            // the binary is already in this bundle, so all this does is put a
+            // wrapper where PATH can find it. Off the main thread and idempotent.
+            cli_shim::install_on_launch();
             Ok(())
         })
         // The transparent + vibrancy window loses tao's traffic-light inset on

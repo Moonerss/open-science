@@ -309,11 +309,39 @@ pub fn start_at(
         }
     });
     *state.running.lock().unwrap() = Some(Running { port, lan: p.lan, stop: stop_flag, shared });
-    // Record where we ended up, so a CLI on this machine can find us.
-    let mut persisted = read_persisted(env);
-    persisted.port = Some(port);
-    let _ = write_persisted(env, &persisted);
+    // Record where we ended up, so a CLI on this machine can find us — unless
+    // the record already names a DIFFERENT gateway that is still answering.
+    //
+    // Taking the record from a live one failed twice over, observed here with an
+    // `osd server` started for a test beside a running desktop app: every CLI on
+    // the machine silently reached the temporary server, and when THAT exited it
+    // cleared the record it now owned, leaving the app running and impossible to
+    // find. Whoever is up and recorded keeps the record; a later server says so
+    // and is reached with an explicit --gateway.
+    if !record_belongs_to_a_live_other(env, port) {
+        let mut persisted = read_persisted(env);
+        persisted.port = Some(port);
+        let _ = write_persisted(env, &persisted);
+    }
     Ok(port)
+}
+
+/// Does the recorded port name a gateway other than `ours` that is still
+/// listening? A refused connection means the record is stale and free to take.
+fn record_belongs_to_a_live_other(env: &Env, ours: u16) -> bool {
+    let Some(recorded) = read_persisted(env).port.filter(|p| *p != ours) else {
+        return false;
+    };
+    port_is_answering(recorded)
+}
+
+/// Is something listening on this loopback port right now?
+pub fn port_is_answering(port: u16) -> bool {
+    std::net::TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+        Duration::from_millis(200),
+    )
+    .is_ok()
 }
 
 pub fn stop(env: &Env, state: &GatewayState) {
@@ -1407,6 +1435,96 @@ pub fn regenerate_gateway_token(env: &Env, state: &GatewayState) -> Result<Gatew
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A gateway record with `port` set, in a throwaway data dir.
+    fn env_with_recorded_port(name: &str, port: Option<u16>) -> (Env, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("gw-record-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let env = Env::new(dir.clone(), dir.join("res"), None, "0.0.0".into());
+        let mut p = read_persisted(&env);
+        p.token = "t".into();
+        p.port = port;
+        write_persisted(&env, &p).unwrap();
+        (env, dir)
+    }
+
+    #[test]
+    fn a_live_gateways_recorded_address_is_not_taken_by_a_second_server() {
+        // What happened here for real: an `osd server` started for a test beside
+        // a running desktop app took the record, and clearing it on its own exit
+        // left the app running and undiscoverable.
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let live = listener.local_addr().unwrap().port();
+        let (env, dir) = env_with_recorded_port("live", Some(live));
+
+        assert!(record_belongs_to_a_live_other(&env, live + 1), "the recorded gateway answers");
+        assert!(
+            !record_belongs_to_a_live_other(&env, live),
+            "our own port is not somebody else's"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn starting_beside_a_live_gateway_leaves_its_address_in_place() {
+        // The call site, not just the predicate: a mutation that restores the
+        // old "record where we ended up, always" line has to fail here.
+        let other = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let live = other.local_addr().unwrap().port();
+        let (env, dir) = env_with_recorded_port("beside", Some(live));
+
+        let state = GatewayState::default();
+        let persisted = Persisted { token: "t".into(), ..read_persisted(&env) };
+        let ours = start_at(&env, &state, &persisted, None).expect("a second gateway binds");
+        assert_ne!(ours, live);
+        assert_eq!(
+            read_persisted(&env).port,
+            Some(live),
+            "the live gateway keeps the recorded address"
+        );
+
+        // And our own exit must not clear a record that was never ours.
+        stop(&env, &state);
+        assert_eq!(
+            read_persisted(&env).port,
+            Some(live),
+            "stopping the second server must not erase the first one's address"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_only_gateway_on_the_machine_does_record_itself() {
+        let (env, dir) = env_with_recorded_port("alone", None);
+        let state = GatewayState::default();
+        let persisted = Persisted { token: "t".into(), ..read_persisted(&env) };
+        let ours = start_at(&env, &state, &persisted, None).unwrap();
+        assert_eq!(read_persisted(&env).port, Some(ours), "a CLI has to be able to find it");
+        stop(&env, &state);
+        assert_eq!(read_persisted(&env).port, None, "and its own exit clears its own address");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_stale_record_is_free_to_take() {
+        // Bind, learn the port, drop the listener: nothing is there now.
+        let dead = {
+            let l = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            l.local_addr().unwrap().port()
+        };
+        let (env, dir) = env_with_recorded_port("stale", Some(dead));
+        assert!(!port_is_answering(dead), "the port was released");
+        assert!(
+            !record_belongs_to_a_live_other(&env, dead + 1),
+            "a record nothing answers on must not block the new server"
+        );
+
+        let (empty_env, empty_dir) = env_with_recorded_port("empty", None);
+        assert!(!record_belongs_to_a_live_other(&empty_env, 4098));
+        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&empty_dir).unwrap();
+    }
 
     #[test]
     fn ct_eq_matches_only_identical() {

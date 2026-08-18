@@ -1,23 +1,48 @@
-// `osd` on the user's PATH.
+// `osd` on the user's PATH, without the user doing anything.
 //
-// The installer carries `osd` beside the app binary, so the terminal client is
-// already on the machine after an install — it is just not on PATH, and the
-// obvious way to put it there is broken: `osd` finds its sidecars and its
-// bundled resources next to its own executable, and `current_exe()` does NOT
-// resolve a symlink on macOS (measured: a symlinked `osd` reports "bundled
-// OpenCode binary not found"). So what gets installed is a one-line wrapper
-// that execs the real path, and nothing else.
+// The installer carries `osd` beside the app binary, so a fresh install already
+// has the terminal client — it is just not reachable by name. Making it
+// reachable happens on launch, not on a button: an install that leaves you a
+// line to paste into your shell profile has not installed anything.
 //
-// The app writes the wrapper and NEVER edits the user's PATH: telling them the
-// one line to add is honest and reversible, editing their shell profile or the
-// Windows registry behind their back is neither.
+// Two things shape how it is done. First, what gets written is a WRAPPER, never
+// a symlink: `osd` resolves its sidecars and bundled resources next to its own
+// executable, and macOS does not resolve a symlink for `current_exe()` —
+// measured, a symlinked `osd` dies with "bundled OpenCode binary not found".
+// Second, the directory is chosen to avoid touching the user's files at all
+// where possible: a directory of theirs that is ALREADY on PATH and writable
+// takes it with no further change. Only when there is none does this fall back
+// to `~/.local/bin` plus one guarded block in the login profile (Unix) or one
+// read-modify-write of the per-user PATH (Windows) — never an admin prompt,
+// never `setx` (which truncates a PATH over 1024 characters).
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-/// Marks a wrapper as ours, so re-installing overwrites our own file and never
+/// Marks a wrapper as ours, so a re-install overwrites our own file and never
 /// somebody else's `osd`.
 const SIGNATURE: &str = "Open Science Desktop CLI wrapper";
+
+/// Delimits the block appended to a shell profile, so it is found again and
+/// written exactly once.
+const PROFILE_MARKER: &str = "# Open Science Desktop: put the osd command on PATH";
+
+/// How `osd` became reachable.
+#[derive(Serialize, PartialEq, Debug, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+pub enum PathRoute {
+    /// The directory was already on PATH — nothing else was touched.
+    AlreadyOnPath,
+    /// A block was appended to the user's login profile.
+    ShellProfile,
+    /// The per-user PATH was extended (Windows). Never constructed elsewhere,
+    /// and the enum is shared, so the unused-variant warning is silenced there
+    /// rather than letting non-Windows builds carry a warning.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    UserEnvironment,
+    /// The wrapper is in place but nothing has put its directory on PATH yet.
+    Unreachable,
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,28 +50,24 @@ pub struct CliShimStatus {
     /// The bundled `osd` beside this executable — None in a dev run, or any
     /// build that does not carry it.
     binary: Option<String>,
-    /// Where the wrapper goes, whether or not it is there yet.
+    /// The wrapper's path, whether or not it is there yet.
     shim: String,
     /// A wrapper of ours is in place AND points at this app's `osd`.
     installed: bool,
-    /// Something else occupies that name, so installing would overwrite it.
+    /// Something else already has that name, so installing would overwrite it.
     occupied: bool,
-    /// The wrapper's directory is on this process's PATH.
-    on_path: bool,
-    /// The line that puts it there, when it is not.
+    route: PathRoute,
+    /// The profile file that was extended, when that is how PATH was arranged.
+    profile: Option<String>,
+    /// Shown only when nothing automatic worked: the line to add by hand.
     path_hint: Option<String>,
 }
 
-/// `~/.local/bin` on every platform — one code path, and a directory the user
-/// owns. Windows spells `$HOME` differently but keeps the same layout.
-fn shim_dir() -> Result<PathBuf, String> {
-    let home = if cfg!(windows) {
-        std::env::var_os("USERPROFILE")
-    } else {
-        std::env::var_os("HOME")
-    }
-    .ok_or("no home directory")?;
-    Ok(PathBuf::from(home).join(".local").join("bin"))
+fn home() -> Result<PathBuf, String> {
+    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    std::env::var_os(var)
+        .map(PathBuf::from)
+        .ok_or_else(|| "no home directory".to_string())
 }
 
 fn shim_name() -> &'static str {
@@ -57,9 +78,99 @@ fn shim_name() -> &'static str {
     }
 }
 
+/// The PATH a NEW TERMINAL would have.
+///
+/// Not this process's PATH: a GUI app launched from Finder inherits launchd's
+/// minimal `/usr/bin:/bin:/usr/sbin:/sbin`, so asking it whether `~/bin` is on
+/// PATH answers a different question than the one that matters — measured on
+/// this machine, the login shell has `~/bin` and the app would never have seen
+/// it, and would have edited a profile that needed no editing. So the login
+/// shell is asked directly, once per process (a heavy profile makes this slow,
+/// and nothing here changes while the app runs).
+#[cfg(not(windows))]
+fn login_shell_path() -> Vec<PathBuf> {
+    static CACHE: std::sync::OnceLock<Vec<PathBuf>> = std::sync::OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+            let printed = osd_core::runtime::quiet_command(&shell)
+                .args(["-l", "-c", "printf %s \"$PATH\""])
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|p| !p.is_empty());
+            match printed {
+                Some(path) => std::env::split_paths(&path).collect(),
+                // A login shell that will not run leaves this process's PATH as
+                // the only evidence available.
+                None => process_path(),
+            }
+        })
+        .clone()
+}
+
+#[cfg(windows)]
+fn login_shell_path() -> Vec<PathBuf> {
+    process_path()
+}
+
+fn process_path() -> Vec<PathBuf> {
+    std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default()
+}
+
+/// The two directories a user's own commands conventionally live in. Only these
+/// are ever considered: the login PATH is also full of tool-owned directories —
+/// `~/.cargo/bin`, `~/.nvm/…`, editor plugin bins — and this machine's PATH puts
+/// `~/.cargo/bin` first, so "the first writable directory under $HOME on PATH"
+/// would have dropped our wrapper into rustup's.
+const USER_BIN_DIRS: [&str; 2] = [".local/bin", "bin"];
+
+/// Where the wrapper goes, given the PATH a terminal will have.
+///
+/// A conventional user bin directory that a terminal ALREADY searches takes it
+/// with nothing else touched — the quiet case, and the common one. Otherwise
+/// `~/.local/bin`, whose directory PATH then has to be arranged for.
+fn choose_shim_dir(path: &[PathBuf], home: &Path) -> PathBuf {
+    let candidates: Vec<PathBuf> = USER_BIN_DIRS
+        .iter()
+        .map(|rel| rel.split('/').fold(home.to_path_buf(), |p, part| p.join(part)))
+        .collect();
+    candidates
+        .iter()
+        .find(|dir| path.iter().any(|entry| entry == *dir) && dir.is_dir() && writable(dir))
+        .cloned()
+        .unwrap_or_else(|| candidates[0].clone())
+}
+
+fn shim_dir() -> Result<PathBuf, String> {
+    Ok(choose_shim_dir(&login_shell_path(), &home()?))
+}
+
+/// Would a new terminal find something in `dir`? Compared as paths, so a
+/// trailing separator or a different spelling of the same directory counts.
+fn reachable(path: &[PathBuf], dir: &Path) -> bool {
+    path.iter().any(|entry| entry == dir)
+}
+
+/// Can this process create a file in `dir`? Asked by trying, because permission
+/// bits do not answer it (ACLs, read-only mounts, macOS TCC).
+fn writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".osd-write-probe-{}", std::process::id()));
+    match std::fs::write(&probe, b"") {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 /// The bundled `osd`, when this build carries it. Tauri strips the target
 /// triple when it bundles an `externalBin`, so it sits under the plain name
-/// next to the app binary — the same place `osd` itself looks for `opencode`.
+/// next to the app binary — the same place `osd` looks for `opencode`.
 fn bundled_osd() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let name = if cfg!(windows) { "osd.exe" } else { "osd" };
@@ -96,91 +207,260 @@ fn wrapper_script(binary: &Path) -> String {
     }
 }
 
-/// Is `dir` on this process's PATH? Compared as paths, so a trailing separator
-/// or a different spelling of the same directory still counts.
-fn on_path(dir: &Path) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|entry| entry == dir)
+/// The line that adds `dir` to PATH by hand — the last resort, shown only when
+/// everything automatic failed.
+fn path_hint(dir: &Path) -> String {
+    format!("export PATH=\"{}:$PATH\"", dir.display())
 }
 
-/// The line that adds `dir` to PATH, for the platform's shell.
-fn path_hint(dir: &Path) -> String {
-    let dir = dir.display();
-    if cfg!(windows) {
-        // Reads the USER PATH and writes it back with the directory appended.
-        // `setx` is deliberately not used: it truncates a PATH longer than
-        // 1024 characters, which destroys the variable it was meant to extend.
-        format!(
-            "[Environment]::SetEnvironmentVariable('PATH', \
-             [Environment]::GetEnvironmentVariable('PATH','User') + ';{dir}', 'User')"
-        )
+/// The login profile to extend, for the shell the user actually runs. A file
+/// that does not exist yet is still the right answer: creating `~/.zprofile` on
+/// a machine whose shell is zsh is what zsh itself would read next login.
+fn login_profile_for(home: &Path, shell: &str) -> PathBuf {
+    let name = if shell.ends_with("zsh") {
+        ".zprofile"
+    } else if shell.ends_with("bash") {
+        ".bash_profile"
     } else {
-        format!("export PATH=\"{dir}:$PATH\"")
+        // An unknown shell still reads ~/.profile in the POSIX case.
+        ".profile"
+    };
+    home.join(name)
+}
+
+fn login_profile() -> Result<PathBuf, String> {
+    Ok(login_profile_for(
+        &home()?,
+        &std::env::var("SHELL").unwrap_or_default(),
+    ))
+}
+
+/// Append the PATH line to the login profile, once. Returns the file it wrote.
+fn extend_login_profile(dir: &Path) -> Result<PathBuf, String> {
+    let profile = login_profile()?;
+    extend_profile_file(&profile, dir)?;
+    Ok(profile)
+}
+
+/// The write itself, against a named file: no environment, so a test can drive
+/// it without touching process-wide state that the rest of the suite shares.
+fn extend_profile_file(profile: &Path, dir: &Path) -> Result<(), String> {
+    let existing = std::fs::read_to_string(profile).unwrap_or_default();
+    // Already ours: leave the file alone. This runs on every launch.
+    if existing.contains(PROFILE_MARKER) {
+        return Ok(());
+    }
+    let mut out = existing;
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str(&format!(
+        "\n{PROFILE_MARKER}\nexport PATH=\"{}:$PATH\"\n",
+        dir.display()
+    ));
+    std::fs::write(profile, out).map_err(|e| e.to_string())
+}
+
+/// Put `dir` on the per-user PATH (Windows). .NET's setter writes the registry
+/// AND broadcasts WM_SETTINGCHANGE, which is what makes a newly opened terminal
+/// see it; `setx` would truncate a long PATH instead.
+#[cfg(windows)]
+fn extend_user_environment(dir: &Path) -> Result<(), String> {
+    let script = format!(
+        "$dir = '{}'; \
+         $current = [Environment]::GetEnvironmentVariable('PATH','User'); \
+         if (($current -split ';') -notcontains $dir) {{ \
+           $next = if ([string]::IsNullOrEmpty($current)) {{ $dir }} else {{ \"$current;$dir\" }}; \
+           [Environment]::SetEnvironmentVariable('PATH', $next, 'User') \
+         }}",
+        dir.display()
+    );
+    let status = osd_core::runtime::quiet_command("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .status()
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("powershell exited with {status}"))
     }
 }
 
-fn status_for(binary: Option<PathBuf>, shim: &Path) -> CliShimStatus {
+/// Is `dir` on the per-user PATH as stored, whether or not this process has it?
+/// The app was launched before the variable was extended, so its own PATH is
+/// not the authority on Windows.
+#[cfg(windows)]
+fn in_user_environment(dir: &Path) -> bool {
+    let script = format!(
+        "$dir = '{}'; \
+         $current = [Environment]::GetEnvironmentVariable('PATH','User'); \
+         if (($current -split ';') -contains $dir) {{ exit 0 }} else {{ exit 1 }}",
+        dir.display()
+    );
+    osd_core::runtime::quiet_command("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn status_for(binary: Option<PathBuf>, shim: &Path, route: PathRoute, profile: Option<PathBuf>) -> CliShimStatus {
     let existing = std::fs::read_to_string(shim).ok();
     let ours = existing.as_deref().is_some_and(|t| t.contains(SIGNATURE));
-    let points_here = match (&existing, &binary) {
+    let installed = match (&existing, &binary) {
         (Some(text), Some(bin)) => ours && text.contains(&bin.display().to_string()),
         _ => false,
     };
     let dir = shim.parent().unwrap_or(shim);
-    let has_path = on_path(dir);
     CliShimStatus {
         binary: binary.map(|b| b.display().to_string()),
         shim: shim.display().to_string(),
-        installed: points_here,
+        installed,
         occupied: existing.is_some() && !ours,
-        on_path: has_path,
-        path_hint: (!has_path).then(|| path_hint(dir)),
+        route,
+        profile: profile.map(|p| p.display().to_string()),
+        path_hint: (route == PathRoute::Unreachable).then(|| path_hint(dir)),
     }
 }
 
-/// Where `osd` is and whether the wrapper is in place. Cheap enough to call on
-/// every render of the settings card.
-#[tauri::command]
-pub fn cli_shim_status() -> Result<CliShimStatus, String> {
-    let shim = shim_dir()?.join(shim_name());
-    Ok(status_for(bundled_osd(), &shim))
+/// Which route PATH takes for `dir`, arranging it when it is not arranged yet.
+fn ensure_reachable(dir: &Path) -> (PathRoute, Option<PathBuf>) {
+    if reachable(&login_shell_path(), dir) {
+        return (PathRoute::AlreadyOnPath, None);
+    }
+    #[cfg(windows)]
+    {
+        if in_user_environment(dir) {
+            return (PathRoute::UserEnvironment, None);
+        }
+        return match extend_user_environment(dir) {
+            Ok(()) => (PathRoute::UserEnvironment, None),
+            Err(e) => {
+                eprintln!("could not extend the user PATH: {e}");
+                (PathRoute::Unreachable, None)
+            }
+        };
+    }
+    #[cfg(not(windows))]
+    match extend_login_profile(dir) {
+        Ok(profile) => (PathRoute::ShellProfile, Some(profile)),
+        Err(e) => {
+            eprintln!("could not extend the login profile: {e}");
+            (PathRoute::Unreachable, None)
+        }
+    }
 }
 
-/// Write the wrapper, and report the state afterwards — including whether the
-/// user still has to add the directory to PATH.
-#[tauri::command]
-pub fn install_cli_shim() -> Result<CliShimStatus, String> {
+/// Install the wrapper and make sure its directory is on PATH. The one place
+/// that writes anything; both the launch hook and the settings button call it.
+fn install() -> Result<CliShimStatus, String> {
     let binary = bundled_osd().ok_or("this build does not carry the osd command")?;
     if runs_from_removable_image(&binary) {
         return Err("this copy is running from the disk image — drag Open Science into \
-                    Applications, open it from there, and install the command again"
+                    Applications, open it from there, and the command installs itself"
             .into());
     }
     let dir = shim_dir()?;
     let shim = dir.join(shim_name());
-    // Never overwrite a file that is not ours — a user with their own `osd` on
-    // PATH gets told, not clobbered.
+    // Never overwrite a file that is not ours — a user with their own `osd`
+    // gets told, not clobbered.
     if let Ok(text) = std::fs::read_to_string(&shim) {
         if !text.contains(SIGNATURE) {
             return Err(format!("{} already exists and is not ours", shim.display()));
         }
     }
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    std::fs::write(&shim, wrapper_script(&binary)).map_err(|e| e.to_string())?;
+    let script = wrapper_script(&binary);
+    // Only write when the content differs, so a launch that changes nothing
+    // does not touch the file's timestamp.
+    if std::fs::read_to_string(&shim).ok().as_deref() != Some(script.as_str()) {
+        std::fs::write(&shim, &script).map_err(|e| e.to_string())?;
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755))
             .map_err(|e| e.to_string())?;
     }
-    Ok(status_for(Some(binary), &shim))
+    let (route, profile) = ensure_reachable(&dir);
+    Ok(status_for(Some(binary), &shim, route, profile))
+}
+
+/// Called once per launch, off the main thread: after installing the app, `osd`
+/// works in a new terminal without the user having asked for it. Idempotent,
+/// and silent about everything except a genuine failure.
+pub fn install_on_launch() {
+    std::thread::spawn(|| match install() {
+        Ok(status) => {
+            if status.route == PathRoute::Unreachable {
+                eprintln!("osd installed at {} but not on PATH", status.shim);
+            }
+        }
+        // A dev build carries no `osd`; that is not worth a line in the log.
+        Err(e) if e.starts_with("this build") => {}
+        Err(e) => eprintln!("could not install the osd command: {e}"),
+    });
+}
+
+/// Where the command is, how it is reachable, and what was touched to make it
+/// so. Reads only — the launch hook and the button do the writing.
+#[tauri::command]
+pub fn cli_shim_status() -> Result<CliShimStatus, String> {
+    let dir = shim_dir()?;
+    let shim = dir.join(shim_name());
+    let route = if reachable(&login_shell_path(), &dir) {
+        PathRoute::AlreadyOnPath
+    } else {
+        #[cfg(windows)]
+        {
+            if in_user_environment(&dir) {
+                PathRoute::UserEnvironment
+            } else {
+                PathRoute::Unreachable
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            let profile = login_profile().ok();
+            let arranged = profile
+                .as_ref()
+                .and_then(|p| std::fs::read_to_string(p).ok())
+                .is_some_and(|t| t.contains(PROFILE_MARKER));
+            if arranged {
+                PathRoute::ShellProfile
+            } else {
+                PathRoute::Unreachable
+            }
+        }
+    };
+    let profile = match route {
+        PathRoute::ShellProfile => login_profile().ok(),
+        _ => None,
+    };
+    Ok(status_for(bundled_osd(), &shim, route, profile))
+}
+
+/// Repair or redo the install by hand — for a copy of the app that moved, or a
+/// launch whose automatic attempt failed.
+#[tauri::command]
+pub fn install_cli_shim() -> Result<CliShimStatus, String> {
+    install()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// None of these tests touch HOME, SHELL or PATH. An earlier version did,
+    /// and process-wide environment changes broke unrelated tests running in
+    /// parallel (the R kernel bridge could not find its interpreter) — so every
+    /// function that decides something takes what it needs as an argument.
+    fn tmp(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("cli-shim-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     #[test]
     fn the_wrapper_execs_the_real_binary_and_never_symlinks_it() {
@@ -198,42 +478,149 @@ mod tests {
     }
 
     #[test]
+    fn a_conventional_user_bin_already_on_the_terminals_path_is_used_as_is() {
+        let home = tmp("home");
+        let bin = home.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let terminal_path = vec![bin.clone(), PathBuf::from("/usr/bin")];
+
+        assert_eq!(
+            choose_shim_dir(&terminal_path, &home),
+            bin,
+            "a user bin directory a terminal already searches wins"
+        );
+        assert!(reachable(&terminal_path, &bin), "and nothing has to be arranged");
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn local_bin_is_preferred_over_bin_when_a_terminal_searches_both() {
+        let home = tmp("both");
+        let local = home.join(".local/bin");
+        let plain = home.join("bin");
+        std::fs::create_dir_all(&local).unwrap();
+        std::fs::create_dir_all(&plain).unwrap();
+        assert_eq!(
+            choose_shim_dir(&[plain, local.clone()], &home),
+            local,
+            "one answer, whatever order PATH happens to list them in"
+        );
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn a_tool_owned_directory_on_path_is_never_used_however_writable_it_is() {
+        // Measured on a real machine: `~/.cargo/bin` is the FIRST writable
+        // directory under $HOME on the login PATH. A wrapper of ours belongs in
+        // neither rustup's directory nor nvm's.
+        let home = tmp("tooling");
+        for rel in [".cargo/bin", ".nvm/versions/node/v24/bin"] {
+            std::fs::create_dir_all(home.join(rel)).unwrap();
+        }
+        let path = vec![home.join(".cargo/bin"), home.join(".nvm/versions/node/v24/bin")];
+        assert_eq!(
+            choose_shim_dir(&path, &home),
+            home.join(".local").join("bin"),
+            "an unrelated tool's bin directory is not ours to write into"
+        );
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn a_directory_that_does_not_exist_yet_is_not_mistaken_for_one_that_does() {
+        let home = tmp("missing-dir");
+        // `~/bin` is on PATH but was never created: fall back rather than
+        // assume PATH describes the filesystem.
+        assert_eq!(
+            choose_shim_dir(&[home.join("bin")], &home),
+            home.join(".local").join("bin")
+        );
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn the_profile_block_is_written_once_and_keeps_what_was_there() {
+        let home = tmp("profile");
+        let profile = home.join(".zprofile");
+        std::fs::write(&profile, "export EDITOR=vim").unwrap();
+        let dir = home.join(".local/bin");
+
+        extend_profile_file(&profile, &dir).unwrap();
+        let after_first = std::fs::read_to_string(&profile).unwrap();
+        assert!(
+            after_first.starts_with("export EDITOR=vim\n"),
+            "a file with no trailing newline must not get the block glued to its last line: {after_first}"
+        );
+        assert!(after_first.contains(&dir.display().to_string()), "{after_first}");
+
+        // Every later launch calls this again and must change nothing.
+        extend_profile_file(&profile, &dir).unwrap();
+        extend_profile_file(&profile, &dir).unwrap();
+        assert_eq!(std::fs::read_to_string(&profile).unwrap(), after_first);
+        assert_eq!(
+            after_first.matches(PROFILE_MARKER).count(),
+            1,
+            "one block, however many launches"
+        );
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn the_profile_follows_the_shell_the_user_actually_runs() {
+        let home = Path::new("/home/u");
+        assert_eq!(login_profile_for(home, "/bin/zsh"), home.join(".zprofile"));
+        assert_eq!(login_profile_for(home, "/bin/bash"), home.join(".bash_profile"));
+        assert_eq!(
+            login_profile_for(home, "/usr/local/bin/fish"),
+            home.join(".profile"),
+            "an unknown shell still reads ~/.profile"
+        );
+        assert_eq!(login_profile_for(home, ""), home.join(".profile"));
+    }
+
+    #[test]
     fn status_tells_ours_from_a_stranger_and_from_a_stale_wrapper() {
-        let tmp = std::env::temp_dir().join(format!("cli-shim-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(&tmp).unwrap();
-        let shim = tmp.join(shim_name());
-        let binary = tmp.join("app/osd");
+        let dir = tmp("status");
+        let shim = dir.join(shim_name());
+        let binary = dir.join("app/osd");
 
-        // Nothing there yet.
-        let s = status_for(Some(binary.clone()), &shim);
-        assert!(!s.installed && !s.occupied);
+        let s = status_for(Some(binary.clone()), &shim, PathRoute::AlreadyOnPath, None);
+        assert!(!s.installed && !s.occupied, "nothing there yet");
 
-        // Somebody else's osd: reported, and install refuses rather than
-        // overwriting it.
         std::fs::write(&shim, "#!/bin/sh\necho not ours\n").unwrap();
-        let s = status_for(Some(binary.clone()), &shim);
+        let s = status_for(Some(binary.clone()), &shim, PathRoute::AlreadyOnPath, None);
         assert!(s.occupied && !s.installed);
 
-        // A wrapper of ours from a PREVIOUS install location is not "installed":
-        // the app has moved, and the button must offer to point it here again.
+        // Ours, but naming an app that has moved: not installed, so the button
+        // offers to point it here again.
         std::fs::write(&shim, wrapper_script(Path::new("/old/path/osd"))).unwrap();
-        let s = status_for(Some(binary.clone()), &shim);
-        assert!(!s.occupied, "our own file is never 'occupied'");
-        assert!(!s.installed, "a wrapper pointing elsewhere is not installed");
+        let s = status_for(Some(binary.clone()), &shim, PathRoute::AlreadyOnPath, None);
+        assert!(!s.occupied && !s.installed);
 
-        // Ours, pointing here.
         std::fs::write(&shim, wrapper_script(&binary)).unwrap();
-        let s = status_for(Some(binary), &shim);
+        let s = status_for(Some(binary), &shim, PathRoute::AlreadyOnPath, None);
         assert!(s.installed && !s.occupied);
 
-        std::fs::remove_dir_all(&tmp).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn only_an_unreachable_install_offers_a_line_to_paste() {
+        let dir = tmp("hint");
+        let shim = dir.join(shim_name());
+        let arranged = status_for(None, &shim, PathRoute::ShellProfile, Some(dir.join(".zprofile")));
+        assert!(arranged.path_hint.is_none(), "PATH is handled — do not ask the user to");
+        let stuck = status_for(None, &shim, PathRoute::Unreachable, None);
+        let hint = stuck.path_hint.expect("a stuck install must say what to do");
+        assert!(hint.contains(&dir.display().to_string()), "{hint}");
+        assert!(!hint.to_lowercase().contains("setx"), "setx truncates a long PATH: {hint}");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn a_copy_running_from_the_disk_image_is_refused() {
-        // The wrapper would name a path that disappears when the image is
-        // ejected, and `osd` would then be "installed" and missing at once.
+        // Its wrapper would name a path that disappears on eject, leaving `osd`
+        // installed and missing at the same time.
         if cfg!(target_os = "macos") {
             assert!(runs_from_removable_image(Path::new(
                 "/Volumes/Open Science/Open Science.app/Contents/MacOS/osd"
@@ -242,29 +629,5 @@ mod tests {
         assert!(!runs_from_removable_image(Path::new(
             "/Applications/Open Science.app/Contents/MacOS/osd"
         )));
-    }
-
-    #[test]
-    fn the_path_hint_never_uses_setx() {
-        // setx truncates a PATH over 1024 characters — it would destroy the
-        // variable it was meant to extend.
-        let hint = path_hint(Path::new("/home/u/.local/bin"));
-        assert!(!hint.to_lowercase().contains("setx"), "{hint}");
-        assert!(hint.contains("/home/u/.local/bin"), "{hint}");
-    }
-
-    #[test]
-    fn a_directory_on_path_is_recognised_however_it_is_spelled() {
-        let dir = std::env::temp_dir().join("osd-path-probe");
-        let joined = std::env::join_paths([dir.clone(), PathBuf::from("/usr/bin")]).unwrap();
-        // SAFETY: single-threaded test process, and the value is restored below.
-        let previous = std::env::var_os("PATH");
-        unsafe { std::env::set_var("PATH", &joined) };
-        assert!(on_path(&dir));
-        assert!(!on_path(Path::new("/definitely/not/on/path")));
-        match previous {
-            Some(v) => unsafe { std::env::set_var("PATH", v) },
-            None => unsafe { std::env::remove_var("PATH") },
-        }
     }
 }
