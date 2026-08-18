@@ -14,6 +14,13 @@ on:
 permissions:
   contents: write
 
+# One build per ref at a time. A tag push produced TWO identical runs one second
+# apart here, and both went on to write the same draft release — duplicate
+# assets, and a race over which one wins. Newer wins; the older is cancelled.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     timeout-minutes: 210

@@ -280,6 +280,12 @@ fn extend_user_environment(dir: &Path) -> Result<(), String> {
         .status()
         .map_err(|e| e.to_string())?;
     if status.success() {
+        // The variable just changed, so the cached "is it there" answer is stale.
+        if let Some(cache) = USER_ENV_CACHE.get() {
+            if let Ok(mut c) = cache.lock() {
+                c.clear();
+            }
+        }
         Ok(())
     } else {
         Err(format!("powershell exited with {status}"))
@@ -287,10 +293,33 @@ fn extend_user_environment(dir: &Path) -> Result<(), String> {
 }
 
 /// Is `dir` on the per-user PATH as stored, whether or not this process has it?
-/// The app was launched before the variable was extended, so its own PATH is
-/// not the authority on Windows.
+/// The app was launched before the variable was extended, so its own PATH is not
+/// the authority on Windows.
+///
+/// Cached, because the answer costs a PowerShell process and is asked on every
+/// launch AND on every render of the settings card. Nothing outside this app
+/// changes it while we run, and the one thing that does — the write above —
+/// clears it.
+#[cfg(windows)]
+static USER_ENV_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<PathBuf, bool>>,
+> = std::sync::OnceLock::new();
+
 #[cfg(windows)]
 fn in_user_environment(dir: &Path) -> bool {
+    let cache = USER_ENV_CACHE.get_or_init(Default::default);
+    if let Some(hit) = cache.lock().ok().and_then(|c| c.get(dir).copied()) {
+        return hit;
+    }
+    let answer = query_user_environment(dir);
+    if let Ok(mut c) = cache.lock() {
+        c.insert(dir.to_path_buf(), answer);
+    }
+    answer
+}
+
+#[cfg(windows)]
+fn query_user_environment(dir: &Path) -> bool {
     let script = format!(
         "$dir = '{}'; \
          $current = [Environment]::GetEnvironmentVariable('PATH','User'); \

@@ -232,24 +232,107 @@ fn home() -> Result<PathBuf, String> {
 /// Resources next to the executable: `<exe dir>/resources` when `osd` was
 /// unpacked from its tarball, or `<exe dir>/../Resources` inside a macOS app
 /// bundle (so `osd` placed in an installed app's MacOS directory just works).
+/// A directory that is only ever in a resource root, used to recognise one.
+/// Every bundle carries it (the goal plugin is not optional), so its presence
+/// tells a resource root from a directory that merely has the right name.
+const RESOURCE_MARKER: &str = "goal-plugin";
+
 fn default_resource_dir() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let dir = exe
         .parent()
         .ok_or_else(|| "executable has no parent directory".to_string())?;
-    for candidate in [dir.join("resources"), dir.join("../Resources")] {
-        if candidate.is_dir() {
-            return Ok(candidate);
+    Ok(resource_root_near(dir).unwrap_or_else(|| dir.join("resources")))
+}
+
+/// Find the bundled resources from the executable's own location.
+///
+/// Four layouts, because each packager lays them out its own way, and this was
+/// wrong for two of them: `osd` inside a Windows install or a Linux .deb found
+/// its sidecars but no resources at all, so it ran with no skills, no goal
+/// plugin and no agent harness — quietly, since missing resources are not an
+/// error. Verified against the actual packages produced by CI.
+fn resource_root_near(dir: &Path) -> Option<PathBuf> {
+    let holds_resources = |p: &Path| p.join(RESOURCE_MARKER).is_dir();
+    // 1. The osd archive: `resources/` beside the binary.
+    // 2. A macOS .app: `Contents/MacOS/osd` with `Contents/Resources`.
+    // 3. A Windows install: the binaries and the resources share one directory.
+    for candidate in [dir.join("resources"), dir.join("../Resources"), dir.to_path_buf()] {
+        if holds_resources(&candidate) {
+            return Some(candidate);
         }
     }
-    // Not an error: a build with no bundled resources still runs, it just has
-    // no skill packs to deploy. `Env::resource` returns None for each of them.
-    Ok(dir.join("resources"))
+    // 4. A Linux package: `/usr/bin/osd` with the resources under
+    //    `/usr/lib/<Product Name>/`, whose name this crate has no way to know —
+    //    so the sibling that holds them is the one that answers.
+    let lib = dir.join("../lib");
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(lib)
+        .ok()?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| holds_resources(p))
+        .collect();
+    // Sorted so a machine with two of them answers the same way every time.
+    entries.sort();
+    entries.into_iter().next()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The four shapes the packagers actually produce, two of which this used to
+    /// get wrong — measured against the real .deb and the real NSIS installer:
+    /// `osd` found its sidecars and no resources, so it ran with no skills, no
+    /// goal plugin and no harness, and said nothing.
+    #[test]
+    fn resources_are_found_in_every_layout_the_packagers_produce() {
+        let root = std::env::temp_dir().join(format!("res-layout-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let marker = |dir: &PathBuf| std::fs::create_dir_all(dir.join(RESOURCE_MARKER)).unwrap();
+
+        // 1. The osd archive: resources/ beside the binary.
+        let archive = root.join("archive");
+        std::fs::create_dir_all(&archive).unwrap();
+        let archive_resources = archive.join("resources");
+        marker(&archive_resources);
+        assert_eq!(resource_root_near(&archive), Some(archive_resources));
+
+        // 2. macOS .app — the binary in Contents/MacOS, resources in Contents/Resources.
+        let macos = root.join("Open Science.app/Contents/MacOS");
+        std::fs::create_dir_all(&macos).unwrap();
+        let app_resources = root.join("Open Science.app/Contents/Resources");
+        marker(&app_resources);
+        assert_eq!(
+            resource_root_near(&macos).map(|p| std::fs::canonicalize(p).unwrap()),
+            Some(std::fs::canonicalize(&app_resources).unwrap())
+        );
+
+        // 3. Windows: binaries and resources share the install directory.
+        let windows = root.join("install");
+        std::fs::create_dir_all(&windows).unwrap();
+        marker(&windows);
+        assert_eq!(resource_root_near(&windows), Some(windows.clone()));
+
+        // 4. Linux package: /usr/bin/osd with resources under /usr/lib/<Product>/.
+        let usr = root.join("usr");
+        let bin = usr.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let product = usr.join("lib").join("Open Science");
+        marker(&product);
+        // A sibling that is NOT a resource root must not be picked.
+        std::fs::create_dir_all(usr.join("lib").join("something-else")).unwrap();
+        assert_eq!(
+            resource_root_near(&bin).map(|p| std::fs::canonicalize(p).unwrap()),
+            Some(std::fs::canonicalize(&product).unwrap())
+        );
+
+        // Nothing anywhere: None, so the caller keeps its "no resources" path.
+        let empty = root.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert_eq!(resource_root_near(&empty), None);
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn data_dir_is_identifier_scoped() {
