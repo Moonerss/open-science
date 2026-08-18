@@ -1309,6 +1309,30 @@ fn spawn_sidecar(env: &Env, port: u16, generation: u64) -> Result<Child, String>
         cmd.env(k, v);
     }
 
+    // Tie the sidecar's life to ours on Linux. Measured on a headless Ubuntu
+    // server: `kill -9` on the parent (or an OOM kill) left OpenCode running and
+    // reparented to init, still holding the port and the session database, with
+    // nothing left to shut it down — our own signal handlers never run for
+    // SIGKILL. systemd hides this because it kills the whole cgroup, so the leak
+    // only bit outside a unit (nohup, tmux, a bare shell). PR_SET_PDEATHSIG makes
+    // the kernel do it in every case.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        use std::os::unix::process::CommandExt;
+        cmd.pre_exec(|| {
+            // PR_SET_PDEATHSIG = 1, SIGKILL = 9. Declared here rather than
+            // pulling in libc for two integers.
+            const PR_SET_PDEATHSIG: i32 = 1;
+            extern "C" {
+                fn prctl(option: i32, ...) -> i32;
+            }
+            if prctl(PR_SET_PDEATHSIG, 9) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+
     let mut child = cmd.spawn().map_err(|e| format!("failed to spawn opencode: {e}"))?;
     // Drain stderr so the child's pipe never fills, AND record the failure
     // signals we used to discard. When the ad-hoc-signed sidecar dies during
@@ -2338,6 +2362,34 @@ fn remove_key_from_config(text: &str, section: &str, key: &str) -> Result<String
 
 /// The current approval mode ("approve" | "full"). Spawn seeding guarantees a
 /// mode exists once the runtime has started; before that, report the default.
+/// The default model this machine's runtime is configured with. Read from the
+/// config rather than a gateway, so it answers before any server is up — which
+/// is when a fresh headless box gets configured.
+pub fn get_default_model(env: &Env) -> Result<Option<String>, String> {
+    let existing = std::fs::read_to_string(effective_config_file(env)?).unwrap_or_default();
+    Ok(crate::opencode_config::default_model_of(&existing))
+}
+
+/// Set the default model on this machine and restart the sidecar if one is
+/// running, so the next turn uses it.
+pub fn set_default_model(env: &Env, model: String) -> Result<(), String> {
+    let path = effective_config_file(env)?;
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let updated = crate::opencode_config::set_default_model(&existing, &model).ok_or_else(|| {
+        format!(
+            "{} could not be parsed, so it was left untouched — fix the JSON and try again",
+            path.display()
+        )
+    })?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, updated).map_err(|e| e.to_string())?;
+    tighten_private(&path);
+    restart_sidecar_if_running(env)?;
+    Ok(())
+}
+
 pub fn get_approval_mode(env: &Env) -> Result<String, String> {
     let path = effective_config_file(env)?;
     let existing = std::fs::read_to_string(&path).unwrap_or_default();

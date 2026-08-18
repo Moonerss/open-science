@@ -339,6 +339,27 @@ pub fn permission_mode_of(existing: &str) -> Option<&'static str> {
     }
 }
 
+/// The default model a config names, if any.
+pub fn default_model_of(existing: &str) -> Option<String> {
+    read_config(existing)?
+        .get("model")?
+        .as_str()
+        .map(str::to_owned)
+}
+
+/// Set the default model, leaving every other key as it is. Returns None when
+/// the file cannot be parsed — a config the app cannot read is never replaced
+/// (#116), the caller reports instead.
+pub fn set_default_model(existing: &str, model: &str) -> Option<String> {
+    let mut root = read_config(existing)?;
+    root.as_object_mut()?
+        .insert("model".to_string(), serde_json::json!(model));
+    serde_json::to_string_pretty(&root).ok().map(|mut s| {
+        s.push('\n');
+        s
+    })
+}
+
 /// Merge provider credentials/model into existing OpenCode config JSON.
 /// Empty fields are left untouched; existing unrelated keys are preserved.
 pub fn merge_config(
@@ -712,6 +733,27 @@ mod tests {
     /// lenient parse behind `seed_compaction` turned an unparseable file into
     /// `{}` and wrote it back, so one launch replaced the user's provider keys,
     /// MCP servers, approval mode and model with a three-key stub (#116).
+    #[test]
+    fn the_default_model_is_set_without_disturbing_anything_else() {
+        let existing = r#"{"$schema":"https://opencode.ai/config.json","model":"openai/gpt-5","provider":{"openai":{"options":{"apiKey":"sk"}}},"permission":{"bash":{"rm *":"ask"}}}"#;
+        assert_eq!(default_model_of(existing).as_deref(), Some("openai/gpt-5"));
+
+        let updated = set_default_model(existing, "anthropic/claude-opus-4-5").expect("parses");
+        let v: Value = serde_json::from_str(&updated).unwrap();
+        assert_eq!(v["model"], "anthropic/claude-opus-4-5");
+        assert_eq!(v["provider"]["openai"]["options"]["apiKey"], "sk", "keys survive");
+        assert_eq!(v["permission"]["bash"]["rm *"], "ask", "so does the approval config");
+        assert_eq!(v["$schema"], "https://opencode.ai/config.json");
+
+        // A config with no model at all gains one.
+        let fresh = set_default_model("{}", "openai/gpt-5").expect("parses");
+        assert_eq!(serde_json::from_str::<Value>(&fresh).unwrap()["model"], "openai/gpt-5");
+
+        // An unreadable config is never rewritten (#116).
+        assert!(set_default_model("{ not json", "openai/gpt-5").is_none());
+        assert!(default_model_of("{ not json").is_none());
+    }
+
     #[test]
     fn an_unreadable_config_is_never_overwritten() {
         // Not JSONC — genuinely broken, and it must stay exactly as it is.

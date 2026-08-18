@@ -26,6 +26,11 @@ pub fn run(args: &Args) -> Result<(), String> {
         ("run", "log") => run_log(args),
         ("fs", "ls") | ("fs", "list") => fs_ls(args),
         ("fs", "get") | ("fs", "read") => fs_get(args),
+        ("model", "") | ("model", "show") => model_show(args),
+        ("model", "ls") | ("model", "list") => model_ls(args),
+        ("model", "set") => model_set(args),
+        ("approval", "") | ("approval", "show") => approval_show(args),
+        ("approval", "set") => approval_set(args),
         ("permission", "ls") | ("permission", "list") => permissions(args),
         ("permission", "allow") => reply(args, "always"),
         ("permission", "once") => reply(args, "once"),
@@ -237,11 +242,30 @@ fn wait_for_reply(
         if !warned_about_approval && !args.has("quiet") && started.elapsed() > Duration::from_secs(5)
         {
             if let Ok(pending) = client.get("/v1/permissions") {
-                if pending.as_array().is_some_and(|a| !a.is_empty()) {
+                if let Some(rows) = pending.as_array().filter(|a| !a.is_empty()) {
                     warned_about_approval = true;
+                    // On a machine with nobody at the keyboard this is the
+                    // difference between "it hung" and "it is waiting for you",
+                    // so say WHAT is waiting and both ways to answer it: this
+                    // terminal, or the web client (the same gateway, so a phone
+                    // or a laptop elsewhere works).
+                    eprintln!("Waiting for approval — the turn is blocked until it is answered:");
+                    for p in rows.iter().take(3) {
+                        eprintln!(
+                            "  {}  {}  {}",
+                            p["id"].as_str().unwrap_or("?"),
+                            p["type"].as_str().unwrap_or(""),
+                            p["title"].as_str().or(p["pattern"].as_str()).unwrap_or("")
+                        );
+                    }
+                    if rows.len() > 3 {
+                        eprintln!("  … and {} more (osd permission ls)", rows.len() - 3);
+                    }
                     eprintln!(
-                        "Waiting on an approval — answer it with `osd permission ls` / \
-                         `osd permission allow <id>`."
+                        "Answer here:  osd permission allow <id>   (or `once` / `deny`)\n\
+                         Or in a browser: {}\n\
+                         Unattended machines can skip approvals entirely — see `osd approval`.",
+                        client.web_url()
                     );
                 }
             }
@@ -420,6 +444,169 @@ fn fs_get(args: &Args) -> Result<(), String> {
 }
 
 // ---- approvals --------------------------------------------------------------
+
+// ---- models -----------------------------------------------------------------
+
+/// The default model, as the runtime currently has it. Read through the gateway
+/// so it answers for the server actually running — a config file read here would
+/// describe a machine, not a session.
+fn model_show(args: &Args) -> Result<(), String> {
+    // A gateway answers for the server actually running; with none up, the
+    // machine's own config is the answer — and that is exactly the moment a
+    // fresh headless box is being set up.
+    let model = match Client::connect(args) {
+        Ok(client) => client
+            .get("/global/config")?
+            .get("model")
+            .and_then(|m| m.as_str())
+            .map(str::to_owned),
+        Err(_) => osd_core::runtime::get_default_model(&crate::env(args)?)?,
+    };
+    if args.has("json") {
+        return print_json(&json!({ "model": model }));
+    }
+    match model {
+        Some(model) => println!("{model}"),
+        None => println!(
+            "No default model. Set one with `osd model set <provider/model>`, or name it \
+             per turn with `osd session send --model`."
+        ),
+    }
+    Ok(())
+}
+
+/// Every model the runtime can actually serve, grouped by provider. Reads the
+/// providers the gateway reports — which are the ones with credentials on the
+/// server, not a catalogue of everything that exists.
+fn model_ls(args: &Args) -> Result<(), String> {
+    // Unlike show/set, this asks the RUNTIME what it can serve, so it needs one
+    // running. Say which of the two things to do rather than "no gateway found".
+    let client = Client::connect(args).map_err(|e| {
+        format!(
+            "{e}\nThe model list comes from the running agent runtime — start one with \
+             `osd server`, or set a model without listing: `osd model set <provider/model>`."
+        )
+    })?;
+    let providers = client.get("/config/providers")?;
+    if args.has("json") {
+        return print_json(&providers);
+    }
+    let list = providers["providers"]
+        .as_array()
+        .cloned()
+        .or_else(|| providers.as_array().cloned())
+        .unwrap_or_default();
+    if list.is_empty() {
+        println!("No providers are configured on this machine.");
+        println!("Add one with `osd auth set <provider> --key <api-key>`.");
+        return Ok(());
+    }
+    let current = client.get("/global/config").ok().and_then(|c| {
+        c["model"].as_str().map(str::to_owned)
+    });
+    for p in list {
+        let id = p["id"].as_str().unwrap_or("?");
+        println!("{}", p["name"].as_str().unwrap_or(id));
+        let mut ids: Vec<String> = match p["models"].as_object() {
+            Some(map) => map.keys().cloned().collect(),
+            // Some builds report models as an array of objects.
+            None => p["models"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|m| m["id"].as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        };
+        ids.sort();
+        for model in ids {
+            let full = format!("{id}/{model}");
+            // Mark the default, so `ls` answers "which one am I on" too.
+            let mark = if current.as_deref() == Some(full.as_str()) { " *" } else { "" };
+            println!("    {full}{mark}");
+        }
+    }
+    Ok(())
+}
+
+/// Set the default model for every later turn. Goes through the gateway, which
+/// permits this one config write and no other — so it works against a remote
+/// server as well as the one on this machine.
+fn model_set(args: &Args) -> Result<(), String> {
+    let model = args.at(0, "provider/model")?;
+    if !model.contains('/') {
+        return Err(format!(
+            "a model is named provider/model — `{model}` has no provider. \
+             `osd model ls` lists what this machine can serve."
+        ));
+    }
+    match Client::connect(args) {
+        // Through the gateway, so it also works against a remote server: this
+        // is the one config write the gateway permits.
+        Ok(client) => {
+            client.patch("/global/config", json!({ "model": model }))?;
+        }
+        // No server here yet — configure the machine, then start one.
+        Err(_) => osd_core::runtime::set_default_model(&crate::env(args)?, model.clone())?,
+    }
+    println!("Default model is now {model}.");
+    Ok(())
+}
+
+// ---- approvals --------------------------------------------------------------
+
+/// What the agent has to ask permission for. Named the way the desktop names it:
+/// "approve" prompts for command execution, deletion, dependency installs and
+/// remote access; "full" does not prompt at all.
+fn approval_show(args: &Args) -> Result<(), String> {
+    let env = crate::env(args)?;
+    let mode = osd_core::runtime::get_approval_mode(&env)?;
+    if args.has("json") {
+        return print_json(&json!({ "mode": mode }));
+    }
+    match mode.as_str() {
+        "full" => {
+            println!("full — the agent runs commands, deletes files, installs dependencies");
+            println!("and reaches the network WITHOUT asking. Nothing will block for approval.");
+        }
+        _ => {
+            println!("approve — commands, deletions, dependency installs and remote access");
+            println!("need an answer before the turn continues (`osd permission ls`).");
+            println!("On a machine with nobody watching, `osd approval set full` removes the wait.");
+        }
+    }
+    Ok(())
+}
+
+/// Switch the mode. This is a machine-local change (it rewrites the runtime's
+/// own config and restarts the sidecar), so it is deliberately NOT something a
+/// remote gateway client can do — the gateway refuses config writes.
+fn approval_set(args: &Args) -> Result<(), String> {
+    let requested = args.at(0, "mode")?;
+    let mode = match requested.as_str() {
+        "full" | "yes" | "auto" => "full",
+        "approve" | "manual" | "ask" => "approve",
+        other => {
+            return Err(format!(
+                "unknown mode {other:?} — `full` (never ask) or `approve` (ask, the default)"
+            ))
+        }
+    };
+    let env = crate::env(args)?;
+    osd_core::runtime::set_approval_mode(&env, mode.to_string())?;
+    if mode == "full" {
+        println!("Approval mode is now FULL on this machine.");
+        println!("The agent will run commands, delete files, install dependencies and reach");
+        println!("the network with no approval. It is still confined to the workspace.");
+    } else {
+        println!("Approval mode is now `approve` — the agent asks before those actions.");
+    }
+    if osd_core::gateway::read_persisted(&env).port.is_some() {
+        println!("The runtime restarted, so a turn in flight may need re-sending.");
+    }
+    Ok(())
+}
 
 fn permissions(args: &Args) -> Result<(), String> {
     let client = Client::connect(args)?;

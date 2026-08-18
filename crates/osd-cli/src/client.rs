@@ -20,6 +20,16 @@ pub struct Client {
 }
 
 impl Client {
+    /// The URL a person can open to answer an approval (or watch the turn): the
+    /// same gateway, with the token in the fragment the SPA reads on load, so
+    /// nothing has to be typed. The token is already on this terminal — printing
+    /// it here reveals nothing new — but it stays out of the query string, which
+    /// servers and proxies log.
+    pub fn web_url(&self) -> String {
+        format!("{}/#token={}", self.base, urlencode(&self.token))
+    }
+
+
     /// Resolve a gateway, in order of how explicit the answer is:
     ///
     /// 1. `--gateway` / `--token`
@@ -47,6 +57,17 @@ impl Client {
         self.json(
             self.http
                 .post(self.url(path))
+                .header("Content-Type", "application/json")
+                .body(body.to_string()),
+        )
+    }
+
+    /// PATCH — the verb OpenCode's config endpoint takes. The gateway allows
+    /// exactly one such write (`{model}`); everything else there is 403.
+    pub fn patch(&self, path: &str, body: Value) -> Result<Value, String> {
+        self.json(
+            self.http
+                .patch(self.url(path))
                 .header("Content-Type", "application/json")
                 .body(body.to_string()),
         )
@@ -205,4 +226,28 @@ pub fn save_login(base: &str, token: &str) -> Result<PathBuf, String> {
     // The token is a credential for the whole workbench.
     osd_core::runtime::tighten_private(&path);
     Ok(path)
+}
+
+/// Percent-encode the few characters that must not appear raw in a URL
+/// fragment. Tokens are hex today; this keeps the URL correct if that changes.
+fn urlencode(raw: &str) -> String {
+    raw.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            other => format!("%{other:02X}"),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::urlencode;
+
+    #[test]
+    fn the_web_url_token_is_encoded_not_pasted_raw() {
+        assert_eq!(urlencode("abc123"), "abc123");
+        assert_eq!(urlencode("a b/c#d"), "a%20b%2Fc%23d");
+    }
 }

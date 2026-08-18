@@ -35,10 +35,17 @@ osd — Open Science Desktop without a window
   osd fs ls [path]                  browse the workspace
   osd fs get <path> [--output F]    read one file
 
+  osd model                         the default model every turn uses
+  osd model ls                      what this machine can actually serve
+  osd model set <provider/model>
+
   osd permission ls                 what the agent is waiting to be allowed
   osd permission allow|once|deny <id>
+  osd approval                      whether the agent has to ask at all
+  osd approval set full|approve     `full` never asks — for unattended machines
 
-  osd auth set <provider> --key K   provider credentials, LOCAL to this machine
+  osd auth set <provider> --key K [--model provider/model] [--base-url URL]
+                                    provider credentials, LOCAL to this machine
   osd auth ls
 
 Server options
