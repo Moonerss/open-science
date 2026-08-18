@@ -20,13 +20,16 @@ pub struct Client {
 }
 
 impl Client {
-    /// The URL a person can open to answer an approval (or watch the turn): the
-    /// same gateway, with the token in the fragment the SPA reads on load, so
-    /// nothing has to be typed. The token is already on this terminal — printing
-    /// it here reveals nothing new — but it stays out of the query string, which
-    /// servers and proxies log.
+    /// The URL a person can open to answer an approval (or watch the turn).
+    ///
+    /// Deliberately WITHOUT the token. It would save one paste, and the earlier
+    /// version of this did exactly that — but this line goes to stderr, which is
+    /// a CI log, a systemd journal or a scrollback shared in a bug report, and a
+    /// bearer token has no business in any of them. The web client asks for the
+    /// token itself, and whoever is answering an approval can get it from
+    /// `osd status --json` or Settings → Remote Access.
     pub fn web_url(&self) -> String {
-        format!("{}/#token={}", self.base, urlencode(&self.token))
+        self.base.clone()
     }
 
 
@@ -226,28 +229,4 @@ pub fn save_login(base: &str, token: &str) -> Result<PathBuf, String> {
     // The token is a credential for the whole workbench.
     osd_core::runtime::tighten_private(&path);
     Ok(path)
-}
-
-/// Percent-encode the few characters that must not appear raw in a URL
-/// fragment. Tokens are hex today; this keeps the URL correct if that changes.
-fn urlencode(raw: &str) -> String {
-    raw.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
-            other => format!("%{other:02X}"),
-        })
-        .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::urlencode;
-
-    #[test]
-    fn the_web_url_token_is_encoded_not_pasted_raw() {
-        assert_eq!(urlencode("abc123"), "abc123");
-        assert_eq!(urlencode("a b/c#d"), "a%20b%2Fc%23d");
-    }
 }

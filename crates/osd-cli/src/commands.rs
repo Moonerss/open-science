@@ -263,7 +263,7 @@ fn wait_for_reply(
                     }
                     eprintln!(
                         "Answer here:  osd permission allow <id>   (or `once` / `deny`)\n\
-                         Or in a browser: {}\n\
+                         Or in a browser: {} (the page asks for the token)\n\
                          Unattended machines can skip approvals entirely — see `osd approval`.",
                         client.web_url()
                     );
@@ -445,11 +445,25 @@ fn fs_get(args: &Args) -> Result<(), String> {
 
 // ---- approvals --------------------------------------------------------------
 
+/// Did the caller name a gateway other than "whatever is on this machine"? Then
+/// a machine-local answer is the wrong one, and a machine-local WRITE is worse.
+fn asked_about_a_remote(args: &Args) -> bool {
+    args.value("gateway").is_some() || std::env::var_os("OSD_GATEWAY").is_some()
+}
+
+fn local_only_error(command: &str) -> String {
+    format!(
+        "{command} changes the machine it runs on — the agent runtime's own config — and the \
+         gateway deliberately refuses config writes. Run it on that machine (over SSH) instead \
+         of pointing --gateway at it."
+    )
+}
+
 // ---- models -----------------------------------------------------------------
 
-/// The default model, as the runtime currently has it. Read through the gateway
-/// so it answers for the server actually running — a config file read here would
-/// describe a machine, not a session.
+/// The default model. A running gateway is the authority — it answers for the
+/// server that will actually run the next turn — and with none up, this machine's
+/// own config is, which is the state a box is in while being set up.
 fn model_show(args: &Args) -> Result<(), String> {
     // A gateway answers for the server actually running; with none up, the
     // machine's own config is the answer — and that is exactly the moment a
@@ -460,6 +474,10 @@ fn model_show(args: &Args) -> Result<(), String> {
             .get("model")
             .and_then(|m| m.as_str())
             .map(str::to_owned),
+        // Only fall back for a question about THIS machine. Someone who named a
+        // gateway asked about that server, and answering with local state would
+        // be a different answer to a different question.
+        Err(e) if asked_about_a_remote(args) => return Err(e),
         Err(_) => osd_core::runtime::get_default_model(&crate::env(args)?)?,
     };
     if args.has("json") {
@@ -547,6 +565,10 @@ fn model_set(args: &Args) -> Result<(), String> {
         Ok(client) => {
             client.patch("/global/config", json!({ "model": model }))?;
         }
+        // A named gateway that cannot be reached is an error, never a quiet
+        // write to the local machine: `osd --gateway http://box:4098 model set X`
+        // must not reconfigure the laptop it was typed on.
+        Err(e) if asked_about_a_remote(args) => return Err(e),
         // No server here yet — configure the machine, then start one.
         Err(_) => osd_core::runtime::set_default_model(&crate::env(args)?, model.clone())?,
     }
@@ -560,6 +582,9 @@ fn model_set(args: &Args) -> Result<(), String> {
 /// "approve" prompts for command execution, deletion, dependency installs and
 /// remote access; "full" does not prompt at all.
 fn approval_show(args: &Args) -> Result<(), String> {
+    if asked_about_a_remote(args) {
+        return Err(local_only_error("osd approval"));
+    }
     let env = crate::env(args)?;
     let mode = osd_core::runtime::get_approval_mode(&env)?;
     if args.has("json") {
@@ -593,6 +618,9 @@ fn approval_set(args: &Args) -> Result<(), String> {
             ))
         }
     };
+    if asked_about_a_remote(args) {
+        return Err(local_only_error("osd approval set"));
+    }
     let env = crate::env(args)?;
     osd_core::runtime::set_approval_mode(&env, mode.to_string())?;
     if mode == "full" {

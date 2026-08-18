@@ -35,7 +35,7 @@ Formerly Open Science. Claude Science 및 유사한 AI-for-science 워크벤치�
 
 ## 소식
 
-- **2026-08-17** — 🖥️ **화면 없이도 동작합니다.** `osd server`는 디스플레이가 없는 머신에서 워크벤치 전체 — 워크스페이스, 에이전트 런타임, 그리고 *동일한* 웹 UI — 를 실행하고, `osd session send … --wait`로 스크립트나 다른 에이전트가 이를 구동합니다. 압축 파일 하나면 되고 설치 프로그램은 필요 없습니다. *(미출시)*
+- **2026-08-18** — 🖥️ **화면 없이도 동작합니다.** `osd server`는 디스플레이가 없는 머신에서 워크벤치 전체 — 워크스페이스, 에이전트 런타임, 그리고 *동일한* 웹 UI — 를 실행하고, `osd session send … --wait`로 스크립트나 다른 에이전트가 이를 구동합니다. 압축 파일 하나면 되고 설치 프로그램은 필요 없습니다. `osd`는 데스크톱 설치 파일에 함께 들어가며 첫 실행 때 PATH에 올라갑니다. 서버에서는 아카이브만으로 충분합니다. 모델·키·승인 모두 터미널에서 설정합니다(`osd model`, `osd auth`, `osd approval`). *(미출시)*
 - **2026-08-13** — 🔌 **Agent Client Protocol을 양방향으로 지원.** Codex, Gemini CLI, Claude Code 등 어떤 ACP 에이전트든 이 앱 안에서 — 그 에이전트 자신의 모델과 히스토리, 그리고 이 앱의 MCP 커넥터를 그대로 쓰면서 — 구동할 수 있고, 반대로 Zed, JetBrains, Neovim에서 Open Science를 구동할 수도 있습니다. *(v0.4.0)*
 - **2026-08-01** — 🗂️ **프로젝트, 메모리, 전체 히스토리.** 세션을 이름이 있는 프로젝트로 묶고(기존 저장소는 복사하지 않고 **그 자리에서** 가져옵니다), 에이전트에 전역·프로젝트 영속 메모리를 부여하며, 모든 과거 대화를 검색 가능한 히스토리에서 보관·복원·내보내기와 함께 찾을 수 있습니다. *(v0.3.1)*
 - **2026-07-24** — 🪟 **분할 페인 타일링.** 세션을 나란히 배치하고, 페인을 드래그해 재배치하며, 독립적인 화면을 여러 개 유지하고, 페인마다 다른 모델을 사용할 수 있습니다. *(v0.3.0)*
@@ -168,11 +168,18 @@ Windows에서는 SmartScreen에서 **More info -> Run anyway**를 선택합니�
 
 연구용 머신에는 대개 화면이 없습니다. `osd`는 화면이 없는 같은 워크벤치입니다. 워크스페이스 구조도, 에이전트 런타임도, 프로젝트도, 웹 UI도 동일하며 — 창에 그리는 대신 HTTP로 제공될 뿐입니다.
 
+**본인 머신에는 이미 설치되어 있습니다.** 데스크톱 설치 파일이 `osd`를 함께 담고 있고, 앱이 처음 실행될 때 PATH에 올려 두므로 새 터미널에서 바로 쓸 수 있습니다. 설정할 것은 없습니다. 올리는 것은 작은 래퍼 하나(`~/.local/bin/osd`, 터미널이 이미 `~/bin`을 찾는다면 그쪽)이며 심볼릭 링크가 아닙니다 — `osd`는 자기 실체 옆에서 런타임을 찾기 때문입니다. 그 폴더가 PATH에 없으면 앱이 로그인 프로필에 한 줄 추가하고, 설정 → 원격 접근에서 어떤 파일을 건드렸는지 알려 줍니다. 셸의 다른 것은 전혀 바꾸지 않습니다.
+
+**서버에서는 아카이브를 쓰세요.** Releases의 `osd-<version>-<target>`은 아무것도 설치하지 않은 상태로 풀어서 바로 실행됩니다 — 패키지를 하나도 추가하지 않은 맨 Ubuntu 컨테이너에서 확인했습니다.
+
 ```bash
-# On the server (unpack the osd-<version>-<target> archive from Releases)
-./osd auth set anthropic --key sk-…      # 이 머신에만 저장되고 네트워크로 나가지 않습니다
+# 머신 설정 (서버가 아직 없어도 됩니다)
+./osd auth set anthropic --key sk-…       # 이 머신에만 저장되고 네트워크로 나가지 않습니다
+./osd model set anthropic/claude-opus-4-5 # 이후 모든 턴의 기본 모델
 ./osd server --lan                        # 접속 URL과 토큰을 출력합니다
 ```
+
+키를 파일에 두지 않아도 됩니다. 에이전트 런타임이 이 프로세스의 환경 변수를 물려받으므로 `ANTHROPIC_API_KEY=sk-… ./osd server`면 `auth set`이 필요 없습니다. 자체 호스팅이나 프록시 엔드포인트도 같은 명령에서 지정하고(`--base-url https://my-gateway.internal/v1`), `osd auth ls`는 제공자 이름만 출력합니다 — 키는 어디에서도 출력되지 않습니다. 키를 바꾸면 재시작이 필요하며, CLI가 그렇게 알려 줍니다.
 
 출력된 URL을 열면 브라우저에서 진짜 데스크톱 UI가 뜹니다(휴대폰도 포함). 터미널에서 조작할 수도 있습니다 — 같은 머신에서, SSH로, 또는 노트북에서:
 
@@ -193,6 +200,46 @@ osd session send $id "Fit the 2015-2024 bleaching trend and write report.md" --w
 ```
 
 `--wait`는 턴이 접수된 시점이 아니라 실제로 끝난 시점에 반환하며, 답이 하나도 나오지 않았다면 분명하게 실패합니다. `--json`은 API의 응답 그대로를 출력하므로 스크립트에 적합합니다. 승인은 그대로 적용됩니다 — 에이전트는 명령 실행 전에 묻고, 창이 없을 때는 `osd permission ls` / `osd permission allow <id>`로 답합니다.
+
+### 어떤 모델, 누가 승인
+
+`osd model`은 기본 모델을 보여 주고, `osd model ls`는 런타임이 **실제로 제공할 수 있는** 모델(이 머신에 자격 증명이 있는 제공자, 현재 것은 표시됨)을 나열하며, `osd model set <provider/model>`로 바꿉니다 — 게이트웨이를 거치므로 원격 서버에도 통합니다. 개별 턴은 `osd session send --model … --agent … --effort …`로 덮어쓸 수 있습니다.
+
+승인은 그대로 적용됩니다: 에이전트는 명령 실행, 파일 삭제, 의존성 설치, 네트워크 접근 전에 묻습니다. 창이 없을 때 `--wait`는 **무엇을 기다리는지** 알려 주고 답하는 두 가지 길을 제시합니다 — 터미널의 `osd permission ls` / `osd permission allow <id>`, 또는 출력된 게이트웨이 URL(토큰이 들어 있어 노트북이나 휴대폰 브라우저에서 바로 승인할 수 있습니다).
+
+지켜보는 사람이 없는 머신이라면 명시적으로 승인을 건너뛰세요:
+
+```bash
+osd approval            # 지금 무엇을 물어보는지
+osd approval set full   # 아무것도 묻지 않음: 명령, 삭제, 설치, 네트워크
+```
+
+`full`은 기본값이 아니라 의도한 선택입니다: 에이전트는 여전히 워크스페이스 안에 머물지만, 더 이상 멈춰서 묻지 않습니다. `osd approval set approve`로 모든 규칙이 돌아옵니다.
+
+### 서비스로 실행
+
+`osd server`는 평범한 포그라운드 프로세스라 systemd가 그대로 실행합니다. 아래 unit은 Ubuntu에서 끝까지 실행해 봤습니다 — 활성화, 재시작, 크래시, 정지:
+
+```ini
+# /etc/systemd/system/osd.service
+[Unit]
+Description=Open Science Desktop (headless)
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/opt/osd/osd server --port 4788
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`sudo systemctl enable --now osd`을 실행하면 출력된 URL과 토큰이 `journalctl -u osd`에 남습니다. unit으로 돌리는 것이 가장 깔끔합니다: systemd는 정지할 때 cgroup 전체를 정리하므로, 서버가 어떻게 죽든 에이전트 런타임이 살아남지 않습니다.
+
 
 `--gateway`를 지정하지 않으면 `osd`는 같은 머신에서 이미 실행 중인 게이트웨이(데스크톱 앱의 것 포함)에 연결합니다. 즉 앱이 켜져 있으면 `osd session ls`가 바로 동작합니다. 그 외에는 `osd login --gateway <url> --token <token>`으로 어디든 지정하세요.
 

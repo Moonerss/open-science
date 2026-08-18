@@ -40,7 +40,7 @@ runs, and review into one auditable desktop workflow.
 
 ## News
 
-- **2026-08-17** — 🖥️ **Runs without a screen.** `osd server` starts the whole workbench — workspace, agent runtime, and the *same* web UI — on a machine with no display, and `osd session send … --wait` drives it from a script or another agent. One tarball, no installer. *(unreleased)*
+- **2026-08-18** — 🖥️ **Runs without a screen, and the terminal command comes with it.** `osd server` starts the whole workbench — workspace, agent runtime, and the *same* web UI — on a machine with no display, and `osd session send … --wait` drives it from a script or another agent. `osd` ships inside the desktop installer and puts itself on your PATH on first launch; on a server the archive needs nothing installed. Models, keys and approvals are all configurable from the terminal (`osd model`, `osd auth`, `osd approval`). *(unreleased)*
 - **2026-08-13** — 🔌 **Speaks the Agent Client Protocol, both directions.** Drive Codex, Gemini CLI, Claude Code, or any other ACP agent from inside this app — with its own models, history, and your MCP connectors — or drive Open Science itself from Zed, JetBrains, or Neovim. *(v0.4.0)*
 - **2026-08-01** — 🗂️ **Projects, memory, and full history.** Group sessions into named projects (import an existing repo *in place*, no copying), give the agent persistent global and project memory, and reach every past conversation through a searchable history with archive, restore, and export. *(v0.3.1)*
 - **2026-07-24** — 🪟 **Split-pane tiling.** Tile sessions side by side, drag panes to re-dock them, keep several independent Screens, and run a different model in each pane. *(v0.3.0)*
@@ -246,11 +246,31 @@ A research machine usually has no screen. `osd` is the same workbench without
 one: the same workspace layout, the same agent runtime, the same projects, and
 the same web UI — served over HTTP instead of drawn in a window.
 
+**On your own machine it is already installed.** The desktop installer carries
+`osd`, and the app puts it on your PATH the first time it starts, so a new
+terminal has the command with nothing to set up. It writes one small wrapper
+(`~/.local/bin/osd`, or `~/bin` when a terminal already searches that) — never a
+symlink, because `osd` finds its runtime next to its real executable. If that
+folder is not on PATH, the app adds it to your login profile and Settings →
+Remote Access says which file it touched. Nothing else on your shell is changed.
+
+**On a server, take the archive.** `osd-<version>-<target>` from Releases
+unpacks and runs with nothing installed — verified on a bare Ubuntu container
+with no packages added at all.
+
 ```bash
-# On the server (unpack the osd-<version>-<target> archive from Releases)
-./osd auth set anthropic --key sk-…      # stays on this machine, never on the wire
+# Configure the machine (works before any server is running)
+./osd auth set anthropic --key sk-…       # stays on this machine, never on the wire
+./osd model set anthropic/claude-opus-4-5 # the default for every turn
 ./osd server --lan                        # prints its URL and access token
 ```
+
+Keys never have to touch a file: the agent runtime inherits this process's
+environment, so `ANTHROPIC_API_KEY=sk-… ./osd server` needs no `auth set` at
+all. A self-hosted or proxied endpoint goes in the same command
+(`--base-url https://my-gateway.internal/v1`), and `osd auth ls` prints provider
+names only — no key is ever printed by anything. Changing a key needs a restart;
+the CLI says so rather than leaving you to wonder.
 
 Open the printed URL and you get the real desktop UI in a browser, phone
 included. Or drive it from a terminal — on the same machine, over SSH, or from
@@ -275,9 +295,59 @@ osd session send $id "Fit the 2015-2024 bleaching trend and write report.md" --w
 
 `--wait` returns when the turn is finished, not when it was accepted, and fails
 loudly if it produced no reply. `--json` prints the API's own response for
-scripts. Approvals still apply — the agent asks before running commands, and
-`osd permission ls` / `osd permission allow <id>` is how you answer without a
-window.
+scripts.
+
+### Which model, and who approves what
+
+`osd model` shows the default, `osd model ls` lists what the runtime can
+actually serve (the providers this machine has credentials for, current one
+marked), and `osd model set <provider/model>` changes it — over the gateway, so
+it works against a remote server too. Any single turn can override it with
+`osd session send --model … --agent … --effort …`.
+
+Approvals still apply: the agent asks before running commands, deleting files,
+installing dependencies or reaching the network. Without a window, `--wait` names
+what is waiting and offers both answers — `osd permission ls` /
+`osd permission allow <id>` in the terminal, or the gateway URL it prints, which
+carries the token so a browser on your laptop or phone can approve it.
+
+For a machine with nobody watching, opt out explicitly:
+
+```bash
+osd approval            # what has to be asked today
+osd approval set full   # never ask — commands, deletions, installs, network
+```
+
+`full` is a deliberate choice, not a default: the agent stays confined to the
+workspace, but nothing pauses for you. `osd approval set approve` puts every
+rule back.
+
+### As a service
+
+`osd server` is an ordinary foreground process, so systemd runs it as-is. This
+unit was run end to end on Ubuntu — enable, restart, crash, stop:
+
+```ini
+# /etc/systemd/system/osd.service
+[Unit]
+Description=Open Science Desktop (headless)
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/opt/osd/osd server --port 4788
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`sudo systemctl enable --now osd` and the printed URL and token land in
+`journalctl -u osd`. A unit is also the tidiest way to run it: systemd stops the
+whole cgroup, so the agent runtime never survives the server, however it dies.
 
 With no `--gateway` given, `osd` talks to a gateway already running on the same
 machine — including the desktop app's — so with the app open, `osd session ls`

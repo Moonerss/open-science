@@ -35,7 +35,7 @@ Formerly Open Science. Claude Science などの AI-for-science ワークベン�
 
 ## ニュース
 
-- **2026-08-17** — 🖥️ **画面がなくても動く。** `osd server` はディスプレイのないマシンでワークベンチ一式（ワークスペース、エージェントランタイム、そして*同じ* Web UI）を起動し、`osd session send … --wait` でスクリプトや別のエージェントから動かせます。アーカイブひとつ、インストーラー不要。 *(未リリース)*
+- **2026-08-18** — 🖥️ **画面がなくても動き、ターミナルのコマンドも同梱。** `osd server` はディスプレイのないマシンでワークベンチ一式（ワークスペース、エージェントランタイム、そして*同じ* Web UI）を起動し、`osd session send … --wait` でスクリプトや別のエージェントから動かせます。`osd` はデスクトップのインストーラーに入り、初回起動で PATH に載ります。サーバーではアーカイブだけで、追加インストールは不要です。モデル・鍵・承認はすべてターミナルから設定できます（`osd model`、`osd auth`、`osd approval`）。 *(未リリース)*
 - **2026-08-13** — 🔌 **Agent Client Protocol に双方向で対応。** Codex、Gemini CLI、Claude Code などの ACP エージェントを、そのエージェント自身のモデル・履歴と本アプリの MCP コネクタごと、このアプリの中から動かせます。逆に Zed、JetBrains、Neovim から Open Science を動かすこともできます。 *(v0.4.0)*
 - **2026-08-01** — 🗂️ **プロジェクト・メモリ・全履歴。** セッションを名前付きプロジェクトにまとめ（既存リポジトリはコピーせず**その場で**インポート）、グローバルとプロジェクトの永続メモリを持たせ、過去のすべての会話を検索可能な履歴（アーカイブ／復元／エクスポート付き）から辿れます。 *(v0.3.1)*
 - **2026-07-24** — 🪟 **分割ペインのタイリング。** セッションを並べて表示し、ペインをドラッグして再配置し、独立した「スクリーン」を複数保持でき、ペインごとに別のモデルを使えます。 *(v0.3.0)*
@@ -168,11 +168,18 @@ Windows では SmartScreen の **More info -> Run anyway** を選択します。
 
 研究用マシンにはたいてい画面がありません。`osd` は画面のない同じワークベンチです。ワークスペースの構成も、エージェントランタイムも、プロジェクトも、Web UI も同じ — ウィンドウに描く代わりに HTTP で配信するだけです。
 
+**自分のマシンでは、すでに入っています。** デスクトップのインストーラーが `osd` を同梱しており、アプリの初回起動時に PATH に置くので、新しいターミナルを開けばそのまま使えます。設定は不要です。置くのは小さなラッパー 1 つ（`~/.local/bin/osd`、ターミナルがすでに `~/bin` を見ているならそちら）で、シンボリックリンクではありません — `osd` は自分の実体の隣でランタイムを探すからです。そのフォルダーが PATH になければ、アプリがログインプロファイルに追記し、「設定 → リモートアクセス」がどのファイルに触れたかを表示します。シェルのそれ以外は一切変更しません。
+
+**サーバーではアーカイブを使います。** Releases の `osd-<version>-<target>` は展開してそのまま動きます — パッケージを一切追加していない素の Ubuntu コンテナで確認済みです。
+
 ```bash
-# On the server (unpack the osd-<version>-<target> archive from Releases)
-./osd auth set anthropic --key sk-…      # このマシンに残り、ネットワークには出ません
+# このマシンを設定する（サーバー起動前でも可）
+./osd auth set anthropic --key sk-…       # このマシンに残り、ネットワークには出ません
+./osd model set anthropic/claude-opus-4-5 # 以降すべてのターンの既定モデル
 ./osd server --lan                        # URL とアクセストークンを表示します
 ```
+
+鍵をファイルに置かない選択もできます。エージェントランタイムはこのプロセスの環境変数を継承するので、`ANTHROPIC_API_KEY=sk-… ./osd server` なら `auth set` は不要です。自前・プロキシ経由のエンドポイントも同じコマンドで指定でき（`--base-url https://my-gateway.internal/v1`）、`osd auth ls` はプロバイダー名だけを表示します — 鍵はどこにも出力されません。鍵を変えたら再起動が必要で、CLI がそう伝えます。
 
 表示された URL を開けば、ブラウザ（スマホでも）で本物のデスクトップ UI が使えます。ターミナルから動かすこともできます — 同じマシンでも、SSH 越しでも、手元のノート PC からでも:
 
@@ -193,6 +200,46 @@ osd session send $id "Fit the 2015-2024 bleaching trend and write report.md" --w
 ```
 
 `--wait` はターンが受理された時点ではなく、実際に終わった時点で戻ります。返答が何も出なかった場合は明確に失敗します。`--json` は API の応答そのものを出力するのでスクリプト向きです。承認は引き続き有効です — エージェントはコマンド実行前に尋ねますし、ウィンドウがない環境では `osd permission ls` / `osd permission allow <id>` で答えます。
+
+### どのモデルで、誰が承認するか
+
+`osd model` は既定モデルを表示し、`osd model ls` はランタイムが**実際に提供できる**モデル（このマシンに資格情報があるプロバイダーのもの。現在のものには印が付きます）を並べ、`osd model set <provider/model>` で切り替えます — ゲートウェイ経由なので、リモートのサーバーに対しても使えます。単発のターンは `osd session send --model … --agent … --effort …` で上書きできます。
+
+承認は headless でも有効です。コマンド実行、ファイル削除、依存関係のインストール、ネットワークアクセスの前にエージェントは尋ねます。ウィンドウがない場合、`--wait` が**何を待っているか**を示し、答え方を 2 つ提示します — ターミナルでの `osd permission ls` / `osd permission allow <id>`、または表示されるゲートウェイ URL（トークン付きなので、手元のノート PC やスマートフォンのブラウザーから承認できます）。
+
+誰も見ていないマシンでは、明示的に承認を省けます:
+
+```bash
+osd approval            # いま何が尋ねられるのか
+osd approval set full   # 一切尋ねない: コマンド・削除・インストール・ネットワーク
+```
+
+`full` は既定ではなく、意図した選択です。エージェントはワークスペース内に留まりますが、確認で止まることはなくなります。`osd approval set approve` ですべての規則が戻ります。
+
+### サービスとして動かす
+
+`osd server` は普通のフォアグラウンドプロセスなので、systemd はそのまま扱えます。次の unit は Ubuntu で通しで動かしました — 有効化、再起動、クラッシュ、停止:
+
+```ini
+# /etc/systemd/system/osd.service
+[Unit]
+Description=Open Science Desktop (headless)
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/opt/osd/osd server --port 4788
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`sudo systemctl enable --now osd` とすれば、表示される URL とトークンは `journalctl -u osd` に入ります。unit で動かすのが最もきれいです: systemd は停止時に cgroup 全体を止めるので、サーバーがどう死んでもエージェントランタイムが生き残りません。
+
 
 `--gateway` を指定しない場合、`osd` は同じマシンで動いているゲートウェイ（デスクトップアプリのものを含む）に接続します。つまりアプリを開いていれば `osd session ls` はそのまま動きます。それ以外は `osd login --gateway <url> --token <token>` で任意の接続先を指定してください。
 

@@ -35,7 +35,7 @@ Formerly Open Science. Une alternative desktop open source à Claude Science et 
 
 ## Actualités
 
-- **2026-08-17** — 🖥️ **Fonctionne sans écran.** `osd server` lance tout l'atelier — workspace, runtime de l'agent et la *même* UI web — sur une machine sans affichage, et `osd session send … --wait` le pilote depuis un script ou depuis un autre agent. Une archive, pas d'installateur. *(non publié)*
+- **2026-08-18** — 🖥️ **Fonctionne sans écran.** `osd server` lance tout l'atelier — workspace, runtime de l'agent et la *même* UI web — sur une machine sans affichage, et `osd session send … --wait` le pilote depuis un script ou depuis un autre agent. Une archive, pas d'installateur. `osd` est inclus dans l'installeur du bureau et se place sur votre PATH au premier démarrage ; sur un serveur, l'archive suffit. Modèles, clés et approbations se configurent depuis le terminal (`osd model`, `osd auth`, `osd approval`). *(non publié)*
 - **2026-08-13** — 🔌 **Parle l'Agent Client Protocol, dans les deux sens.** Pilotez Codex, Gemini CLI, Claude Code ou tout autre agent ACP depuis cette application — avec ses propres modèles, son historique et vos connecteurs MCP — ou pilotez Open Science depuis Zed, JetBrains ou Neovim. *(v0.4.0)*
 - **2026-08-01** — 🗂️ **Projets, mémoire et historique complet.** Regroupez les sessions dans des projets nommés (un dépôt existant est importé *sur place*, sans copie), donnez à l'agent une mémoire persistante globale et par projet, et retrouvez chaque conversation passée dans un historique cherchable avec archivage, restauration et export. *(v0.3.1)*
 - **2026-07-24** — 🪟 **Panneaux divisés.** Disposez les sessions côte à côte, faites glisser les panneaux pour les réancrer, gardez plusieurs écrans indépendants et utilisez un modèle différent par panneau. *(v0.3.0)*
@@ -168,11 +168,33 @@ Sous Windows, choisissez **More info -> Run anyway** dans SmartScreen.
 
 Une machine de recherche n'a en général pas d'écran. `osd`, c'est le même atelier sans écran : même organisation du workspace, même runtime d'agent, mêmes projets, même UI web — servie en HTTP au lieu d'être dessinée dans une fenêtre.
 
+**Sur votre propre machine, il est déjà installé.** L'installeur du bureau
+embarque `osd`, et l'application le place sur votre PATH au premier démarrage :
+un nouveau terminal a la commande, sans rien à configurer. Elle écrit un petit
+script d'appel (`~/.local/bin/osd`, ou `~/bin` si un terminal le consulte déjà) —
+jamais un lien symbolique, car `osd` trouve son runtime à côté de son véritable
+exécutable. Si ce dossier n'est pas dans le PATH, l'application l'ajoute à votre
+profil de connexion et Paramètres → Accès distant indique le fichier modifié.
+Rien d'autre dans votre shell n'est touché.
+
+**Sur un serveur, prenez l'archive.** `osd-<version>-<target>` des Releases se
+décompresse et fonctionne sans rien installer — vérifié dans un conteneur Ubuntu
+nu, sans ajouter un seul paquet.
+
 ```bash
-# On the server (unpack the osd-<version>-<target> archive from Releases)
-./osd auth set anthropic --key sk-…      # reste sur cette machine, jamais sur le réseau
+# Configurer la machine (possible avant qu'un serveur tourne)
+./osd auth set anthropic --key sk-…       # reste sur cette machine, jamais sur le réseau
+./osd model set anthropic/claude-opus-4-5 # le modèle par défaut de chaque tour
 ./osd server --lan                        # affiche son URL et son jeton d'accès
 ```
+
+Les clés n'ont pas à toucher un fichier : le runtime de l'agent hérite de
+l'environnement de ce processus, donc `ANTHROPIC_API_KEY=sk-… ./osd server` se
+passe de `auth set`. Un endpoint auto-hébergé ou derrière un proxy tient dans la
+même commande (`--base-url https://my-gateway.internal/v1`), et `osd auth ls`
+n'affiche que des noms de fournisseurs — aucune clé n'est jamais affichée.
+Changer une clé demande un redémarrage ; la CLI le dit plutôt que de vous laisser
+deviner.
 
 Ouvrez l'URL affichée : c'est la vraie UI de bureau dans un navigateur, téléphone compris. Ou pilotez-le depuis un terminal — sur la même machine, en SSH, ou depuis votre portable :
 
@@ -194,6 +216,62 @@ osd session send $id "Fit the 2015-2024 bleaching trend and write report.md" --w
 ```
 
 `--wait` revient quand le tour est terminé, pas quand il a été accepté, et échoue explicitement s'il n'a rien produit. `--json` affiche la réponse de l'API elle-même, pour les scripts. Les approbations restent en vigueur — l'agent demande avant d'exécuter des commandes, et `osd permission ls` / `osd permission allow <id>` sert à répondre sans fenêtre.
+
+### Quel modèle, et qui approuve
+
+`osd model` affiche le modèle par défaut, `osd model ls` liste ce que le runtime
+**peut réellement servir** (les fournisseurs dont cette machine a les
+identifiants ; le modèle courant est marqué) et `osd model set <provider/model>`
+le change — via la passerelle, donc aussi contre un serveur distant. Chaque tour
+peut passer outre avec `osd session send --model … --agent … --effort …`.
+
+Les approbations restent en vigueur : l'agent demande avant d'exécuter des
+commandes, supprimer des fichiers, installer des dépendances ou sortir sur le
+réseau. Sans fenêtre, `--wait` dit **ce qu'il** attend et propose les deux
+réponses — dans le terminal `osd permission ls` / `osd permission allow <id>`, ou
+l'URL de la passerelle qu'il affiche, qui porte le jeton pour qu'un navigateur
+sur votre portable ou votre téléphone approuve.
+
+Pour une machine sans personne devant, sortez-en explicitement :
+
+```bash
+osd approval            # ce qui doit être demandé aujourd'hui
+osd approval set full   # ne jamais demander : commandes, suppressions, installations, réseau
+```
+
+`full` est un choix délibéré, pas un défaut : l'agent reste confiné au workspace,
+mais plus rien ne s'arrête pour vous. `osd approval set approve` remet toutes les
+règles.
+
+### En tant que service
+
+`osd server` est un processus de premier plan ordinaire ; systemd l'exécute tel
+quel. Cette unit a été menée de bout en bout sur Ubuntu — activation, redémarrage,
+plantage, arrêt :
+
+```ini
+# /etc/systemd/system/osd.service
+[Unit]
+Description=Open Science Desktop (headless)
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=HOME=/home/ubuntu
+ExecStart=/opt/osd/osd server --port 4788
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`sudo systemctl enable --now osd`, et l'URL affichée avec son jeton arrive dans
+`journalctl -u osd`. Une unit est aussi la façon la plus propre de l'exploiter :
+systemd arrête tout le cgroup, donc le runtime de l'agent ne survit jamais au
+serveur, quelle que soit la manière dont il meurt.
+
 
 Sans `--gateway`, `osd` parle à une passerelle déjà lancée sur la même machine — y compris celle de l'app de bureau : app ouverte, `osd session ls` fonctionne tel quel. Sinon, pointez-le où vous voulez avec `osd login --gateway <url> --token <token>`.
 

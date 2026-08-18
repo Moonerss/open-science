@@ -82,6 +82,9 @@ copy_resource examples/climate-trends examples/climate-trends
 cat > "$stage/README.txt" <<'EOF'
 Open Science Desktop — headless (osd)
 
+Nothing to install: this directory runs as it is, on a server with no packages
+added (checked on a bare Ubuntu container).
+
   ./osd server                 serve the workbench here (web UI + API)
   ./osd server --lan           also reachable from the network
   ./osd --help                 everything else
@@ -89,12 +92,37 @@ Open Science Desktop — headless (osd)
 The web UI is the same one the desktop app runs. Open the URL it prints,
 including the ?token=... it gives you.
 
-Provider credentials stay on this machine — set one with
+Set the machine up before starting a server:
 
-  ./osd auth set anthropic --key <api-key>
+  ./osd auth set anthropic --key <api-key>      credentials, LOCAL to this box
+  ./osd auth set openai --key <k> --base-url <url>   a self-hosted endpoint
+  ./osd model set anthropic/claude-opus-4-5     the default for every turn
+  ./osd model ls                                what this machine can serve
+  ./osd approval                                what the agent must ask first
 
-or export the provider's API key before starting the server; the agent runtime
-inherits this process's environment.
+Or export the provider's API key before starting the server; the agent runtime
+inherits this process's environment, so no key has to touch a file.
+
+Approvals: the agent asks before running commands, deleting files, installing
+dependencies or reaching the network. `--wait` prints what is waiting, and you
+answer with `./osd permission allow <id>` or in the browser at the URL it shows.
+For a machine with nobody watching, `./osd approval set full` never asks.
+
+As a service, systemd runs `osd server` unchanged, and stopping the unit takes
+the agent runtime with it. A unit that was tested end to end:
+
+  [Unit]
+  Description=Open Science Desktop (headless)
+  After=network-online.target
+  [Service]
+  Type=simple
+  User=ubuntu
+  Environment=HOME=/home/ubuntu
+  ExecStart=/opt/osd/osd server --port 4788
+  Restart=on-failure
+  RestartSec=3
+  [Install]
+  WantedBy=multi-user.target
 
 macOS: files from a downloaded archive are quarantined. If macOS refuses to
 run them, clear it once with:  xattr -dr com.apple.quarantine .

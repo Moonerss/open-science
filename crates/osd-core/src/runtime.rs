@@ -877,6 +877,77 @@ pub fn quiet_command(bin: impl AsRef<std::ffi::OsStr>) -> std::process::Command 
     cmd
 }
 
+/// Spawn the sidecar so the kernel takes it with us if we die uncatchably.
+///
+/// Measured on a headless Ubuntu server: `kill -9` on the parent (or an OOM
+/// kill) left OpenCode running and reparented to init, still holding the port
+/// and the session database, with nothing left to shut it down — no handler of
+/// ours runs for SIGKILL. systemd hides this by killing the whole cgroup, so the
+/// leak only bit outside a unit (nohup, tmux, a bare shell).
+///
+/// `PR_SET_PDEATHSIG` fixes it, with one trap that makes the obvious
+/// implementation worse than the bug: the signal fires when the THREAD that
+/// created the child exits, not when the process does. Sidecars are spawned from
+/// short-lived threads all the time — a gateway request handler restarting the
+/// runtime, a Tauri command on a pool thread — and each of those would kill the
+/// sidecar seconds after starting it. So every spawn goes through one thread
+/// that is created once and never returns.
+#[cfg(target_os = "linux")]
+fn spawn_tied_to_our_lifetime(mut cmd: std::process::Command) -> std::io::Result<Child> {
+    use std::sync::mpsc::{channel, Sender};
+    type Request = (std::process::Command, Sender<std::io::Result<Child>>);
+    static SPAWNER: std::sync::OnceLock<Mutex<Sender<Request>>> = std::sync::OnceLock::new();
+
+    unsafe {
+        use std::os::unix::process::CommandExt;
+        cmd.pre_exec(|| {
+            // PR_SET_PDEATHSIG = 1, SIGKILL = 9 — two integers, so declared here
+            // rather than taking a dependency on libc.
+            const PR_SET_PDEATHSIG: i32 = 1;
+            extern "C" {
+                fn prctl(option: i32, ...) -> i32;
+            }
+            if prctl(PR_SET_PDEATHSIG, 9) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+
+    let spawner = SPAWNER.get_or_init(|| {
+        let (tx, rx) = channel::<Request>();
+        std::thread::Builder::new()
+            .name("sidecar-spawner".into())
+            .spawn(move || {
+                // Lives as long as the process, which is the whole point: the
+                // parent-death signal is bound to this thread.
+                for (mut cmd, reply) in rx {
+                    let _ = reply.send(cmd.spawn());
+                }
+            })
+            .expect("spawn the sidecar spawner thread");
+        Mutex::new(tx)
+    });
+
+    let (reply_tx, reply_rx) = channel();
+    spawner
+        .lock()
+        .map_err(|_| std::io::Error::other("the sidecar spawner lock was poisoned"))?
+        .send((cmd, reply_tx))
+        .map_err(|_| std::io::Error::other("the sidecar spawner thread is gone"))?;
+    reply_rx
+        .recv()
+        .map_err(|_| std::io::Error::other("the sidecar spawner thread stopped answering"))?
+}
+
+/// Everywhere else this is just a spawn: macOS has no equivalent of
+/// PR_SET_PDEATHSIG, and Windows uses the console handler installed in
+/// `osd server` plus the job the desktop app runs in.
+#[cfg(not(target_os = "linux"))]
+fn spawn_tied_to_our_lifetime(mut cmd: std::process::Command) -> std::io::Result<Child> {
+    cmd.spawn()
+}
+
 /// Make a secret-holding path owner-only: 700 for directories, 600 for files
 /// (unix). The runtime root carries provider/connector API keys in
 /// `opencode.jsonc`/`auth.json`, and the sidecar rewrites those files with a
@@ -1309,31 +1380,8 @@ fn spawn_sidecar(env: &Env, port: u16, generation: u64) -> Result<Child, String>
         cmd.env(k, v);
     }
 
-    // Tie the sidecar's life to ours on Linux. Measured on a headless Ubuntu
-    // server: `kill -9` on the parent (or an OOM kill) left OpenCode running and
-    // reparented to init, still holding the port and the session database, with
-    // nothing left to shut it down — our own signal handlers never run for
-    // SIGKILL. systemd hides this because it kills the whole cgroup, so the leak
-    // only bit outside a unit (nohup, tmux, a bare shell). PR_SET_PDEATHSIG makes
-    // the kernel do it in every case.
-    #[cfg(target_os = "linux")]
-    unsafe {
-        use std::os::unix::process::CommandExt;
-        cmd.pre_exec(|| {
-            // PR_SET_PDEATHSIG = 1, SIGKILL = 9. Declared here rather than
-            // pulling in libc for two integers.
-            const PR_SET_PDEATHSIG: i32 = 1;
-            extern "C" {
-                fn prctl(option: i32, ...) -> i32;
-            }
-            if prctl(PR_SET_PDEATHSIG, 9) != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-
-    let mut child = cmd.spawn().map_err(|e| format!("failed to spawn opencode: {e}"))?;
+    let mut child = spawn_tied_to_our_lifetime(cmd)
+        .map_err(|e| format!("failed to spawn opencode: {e}"))?;
     // Drain stderr so the child's pipe never fills, AND record the failure
     // signals we used to discard. When the ad-hoc-signed sidecar dies during
     // bootstrap (TCC denial, config-merge abort, panic) the only symptom was a
@@ -2026,6 +2074,34 @@ mod tests {
     fn write(path: &std::path::Path, content: &str) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, content).unwrap();
+    }
+
+    /// The hazard that shapes `spawn_tied_to_our_lifetime`, modelled directly.
+    ///
+    /// PR_SET_PDEATHSIG binds to the THREAD that created the child, and the
+    /// desktop app starts the runtime from a Tauri command — a pool thread that
+    /// exits right after. Spawning there would have the kernel kill the sidecar
+    /// moments later, turning a leak fix into a far worse bug. `osd server`
+    /// spawns from its main thread and would never have shown it.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_child_spawned_from_a_short_lived_thread_outlives_that_thread() {
+        let mut cmd = std::process::Command::new("sleep");
+        cmd.arg("30");
+        let spawned = std::thread::spawn(move || {
+            super::spawn_tied_to_our_lifetime(cmd).expect("the child spawns")
+        });
+        // The thread is gone from here on, exactly like the command's.
+        let mut child = spawned.join().expect("the spawning thread finished");
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        let alive = child.try_wait().expect("try_wait").is_none();
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(
+            alive,
+            "the child was killed when its spawning thread exited — PDEATHSIG must be bound to a \
+             thread that lives as long as the process"
+        );
     }
 
     #[test]
