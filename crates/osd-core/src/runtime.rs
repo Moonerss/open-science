@@ -308,6 +308,81 @@ fn dependency_pins(spec: &str, version: &str) -> bool {
     spec.trim().trim_start_matches(['^', '~', '=', '>', '<', 'v', ' ']) == version
 }
 
+/// Bring the app's OWN dependency line in step with the runtime it bundles.
+///
+/// A profile carries the version the app that CREATED it bundled — a July
+/// profile still said `"@opencode-ai/plugin": "1.17.13"` — and the file above is
+/// only ever copied when absent, so that line outlived the bump to 1.18.18. The
+/// post-check then failed on every single start, `deploy_goal_plugin` returned
+/// before its "refresh on every start" copy, and the profile kept whichever
+/// plugin build it happened to receive first: an app upgrade could not deliver a
+/// goal-plugin fix, and a profile that had never registered the plugin never got
+/// `/goal` at all. Only this one dependency is rewritten — the user's other
+/// plugin dependencies and every other key are written back untouched — and an
+/// unparseable file is reported rather than replaced (#116).
+fn adopt_bundled_plugin_dependency(package_json: &Path, bundled_spec: &str) -> Result<(), String> {
+    let text = std::fs::read_to_string(package_json).map_err(|e| e.to_string())?;
+    let mut doc: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+        format!(
+            "{} is not readable JSON ({e}) — left as it is",
+            package_json.display()
+        )
+    })?;
+    let object = doc
+        .as_object_mut()
+        .ok_or_else(|| format!("{} is not a JSON object", package_json.display()))?;
+    match object.get_mut("dependencies") {
+        Some(serde_json::Value::Object(dependencies)) => {
+            if dependencies
+                .get(OPENCODE_PLUGIN_PACKAGE)
+                .and_then(serde_json::Value::as_str)
+                == Some(bundled_spec)
+            {
+                return Ok(());
+            }
+            dependencies.insert(OPENCODE_PLUGIN_PACKAGE.into(), serde_json::json!(bundled_spec));
+        }
+        Some(_) => {
+            return Err(format!(
+                "{} has a \"dependencies\" that is not an object",
+                package_json.display()
+            ))
+        }
+        None => {
+            object.insert(
+                "dependencies".into(),
+                serde_json::json!({ OPENCODE_PLUGIN_PACKAGE: bundled_spec }),
+            );
+        }
+    }
+    let mut out = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+    out.push('\n');
+    std::fs::write(package_json, out).map_err(|e| e.to_string())
+}
+
+/// Is this lockfile ours alone to replace? It is when it resolves no root
+/// dependency other than the OpenCode plugin: a stale one pins the old version
+/// (the July profile's lock named 1.17.13), and the next `npm install` would
+/// resolve that right back over the tree just copied. A lockfile that also
+/// holds the user's own packages is theirs, and is left exactly as it is.
+fn lock_resolves_nothing_else(package_lock: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(package_lock) else {
+        return false;
+    };
+    let Ok(doc) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    match doc.get("packages").and_then(|p| p.get("")).map(|root| root.get("dependencies")) {
+        Some(Some(serde_json::Value::Object(dependencies))) => {
+            dependencies.keys().all(|name| name == OPENCODE_PLUGIN_PACKAGE)
+        }
+        // A lockfile with no root dependencies at all has nothing of the
+        // user's in it to preserve.
+        Some(None) | None => true,
+        Some(Some(_)) => false,
+    }
+}
+
 fn installed_package_version(node_modules: &Path, package: &str) -> Option<String> {
     let package_json = package
         .split('/')
@@ -371,8 +446,12 @@ fn deploy_goal_plugin_dependencies(src: &Path, dst: &Path) -> Result<(), String>
     // additional plugin dependencies or lockfile.
     if !package_json.exists() {
         std::fs::copy(&src_package, &package_json).map_err(|e| e.to_string())?;
+    } else {
+        let bundled_spec = package_dependency_version(&src_package, OPENCODE_PLUGIN_PACKAGE)
+            .ok_or("bundled goal plugin declares no OpenCode plugin dependency")?;
+        adopt_bundled_plugin_dependency(&package_json, &bundled_spec)?;
     }
-    if !package_lock.exists() {
+    if !package_lock.exists() || lock_resolves_nothing_else(&package_lock) {
         std::fs::copy(&src_lock, &package_lock).map_err(|e| e.to_string())?;
     }
 
@@ -1632,6 +1711,7 @@ pub fn kill_child(state: &RuntimeState) {
 mod tests {
     use super::{
         auth_has_provider, dependency_pins, deploy_goal_plugin_dependencies, parse_scutil_proxy,
+        package_dependency_version, OPENCODE_PLUGIN_PACKAGE,
         ensure_base_layout, prune_stale_skills, random_hex, remove_key_from_config,
         resolve_proxy_env, skill_name_from_markdown, sync_skill_pack, validate_proxy_url,
         workspace_skill_dirs,
@@ -2022,6 +2102,140 @@ mod tests {
         assert_eq!(
             fs::read_to_string(dst.join("node_modules/user-plugin/keep.txt")).unwrap(),
             "keep"
+        );
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn an_old_profiles_stale_pin_is_brought_up_to_the_bundled_version() {
+        // The shape of a real profile created in July, found by starting 0.5.0
+        // against it: package.json and the lockfile still name 1.17.13 (the
+        // version the app that created the profile bundled), while node_modules
+        // already holds 1.18.18. package.json was only ever copied when absent,
+        // so the stale line survived every upgrade, the post-check failed on
+        // every start, and `deploy_goal_plugin` bailed before its refresh —
+        // the profile was stuck with the plugin build it received first.
+        let tmp = std::env::temp_dir().join(format!("goal-deps-stale-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let src = tmp.join("src");
+        let dst = tmp.join("dst");
+        write(&src.join(".opencode-plugin-version"), "1.18.18\n");
+        write(
+            &src.join("package.json"),
+            r#"{"dependencies":{"@opencode-ai/plugin":"^1.18.18"}}"#,
+        );
+        write(
+            &src.join("package-lock.json"),
+            r#"{"lockfileVersion":3,"packages":{"":{"dependencies":{"@opencode-ai/plugin":"^1.18.18"}}}}"#,
+        );
+        write(
+            &src.join("node_modules/@opencode-ai/plugin/package.json"),
+            r#"{"name":"@opencode-ai/plugin","version":"1.18.18"}"#,
+        );
+        write(
+            &dst.join("package.json"),
+            "{\n  \"dependencies\": {\n    \"@opencode-ai/plugin\": \"1.17.13\"\n  }\n}\n",
+        );
+        write(
+            &dst.join("package-lock.json"),
+            r#"{"lockfileVersion":3,"packages":{"":{"dependencies":{"@opencode-ai/plugin":"1.17.13"}}}}"#,
+        );
+
+        deploy_goal_plugin_dependencies(&src, &dst).expect("a stale pin must be adopted, not fatal");
+
+        assert_eq!(
+            package_dependency_version(&dst.join("package.json"), OPENCODE_PLUGIN_PACKAGE)
+                .as_deref(),
+            Some("^1.18.18"),
+            "the app's own dependency line must follow the runtime it bundles"
+        );
+        // The lockfile named the old version too: left behind, the next
+        // `npm install` would resolve 1.17.13 back over the tree just copied.
+        assert!(
+            fs::read_to_string(dst.join("package-lock.json"))
+                .unwrap()
+                .contains("1.18.18"),
+            "a lockfile holding nothing but our dependency is refreshed"
+        );
+        assert_eq!(
+            fs::read_to_string(dst.join(".opencode-plugin-version")).unwrap(),
+            "1.18.18\n"
+        );
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn a_stale_pin_is_updated_without_disturbing_the_users_own_dependencies() {
+        let tmp = std::env::temp_dir().join(format!("goal-deps-mixed-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let src = tmp.join("src");
+        let dst = tmp.join("dst");
+        write(&src.join(".opencode-plugin-version"), "1.18.18\n");
+        write(
+            &src.join("package.json"),
+            r#"{"dependencies":{"@opencode-ai/plugin":"^1.18.18"}}"#,
+        );
+        write(&src.join("package-lock.json"), r#"{"lockfileVersion":3}"#);
+        write(
+            &src.join("node_modules/@opencode-ai/plugin/package.json"),
+            r#"{"name":"@opencode-ai/plugin","version":"1.18.18"}"#,
+        );
+        write(
+            &dst.join("package.json"),
+            r#"{"name":"opencode","dependencies":{"@opencode-ai/plugin":"1.17.13","user-plugin":"2.0.0"}}"#,
+        );
+        write(
+            &dst.join("package-lock.json"),
+            r#"{"lockfileVersion":3,"packages":{"":{"dependencies":{"@opencode-ai/plugin":"1.17.13","user-plugin":"2.0.0"}}}}"#,
+        );
+
+        deploy_goal_plugin_dependencies(&src, &dst).unwrap();
+
+        let text = fs::read_to_string(dst.join("package.json")).unwrap();
+        let doc: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(doc["dependencies"]["@opencode-ai/plugin"], "^1.18.18");
+        assert_eq!(
+            doc["dependencies"]["user-plugin"], "2.0.0",
+            "the user's own plugin dependency must survive"
+        );
+        assert_eq!(doc["name"], "opencode", "every other key is written back");
+        // Their lockfile resolves their package too, so it is not ours to replace.
+        assert!(
+            fs::read_to_string(dst.join("package-lock.json"))
+                .unwrap()
+                .contains("user-plugin"),
+            "a lockfile holding the user's packages is left alone"
+        );
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn an_unreadable_profile_package_json_is_reported_not_replaced() {
+        // #116's lesson: a config the app cannot parse must never be destroyed.
+        let tmp = std::env::temp_dir().join(format!("goal-deps-broken-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let src = tmp.join("src");
+        let dst = tmp.join("dst");
+        write(&src.join(".opencode-plugin-version"), "1.18.18\n");
+        write(
+            &src.join("package.json"),
+            r#"{"dependencies":{"@opencode-ai/plugin":"^1.18.18"}}"#,
+        );
+        write(&src.join("package-lock.json"), r#"{"lockfileVersion":3}"#);
+        write(
+            &src.join("node_modules/@opencode-ai/plugin/package.json"),
+            r#"{"name":"@opencode-ai/plugin","version":"1.18.18"}"#,
+        );
+        let broken = "{ this is not json";
+        write(&dst.join("package.json"), broken);
+
+        let err = deploy_goal_plugin_dependencies(&src, &dst)
+            .expect_err("an unparseable package.json must not be adopted silently");
+        assert!(err.contains("not readable JSON"), "{err}");
+        assert_eq!(
+            fs::read_to_string(dst.join("package.json")).unwrap(),
+            broken,
+            "the file the app cannot read is left byte-for-byte"
         );
         fs::remove_dir_all(&tmp).unwrap();
     }
