@@ -254,6 +254,9 @@ bash scripts/dev/fetch-opencode.sh
 bash scripts/dev/fetch-uv.sh
 bash scripts/dev/fetch-skills.sh
 
+# osd 终端客户端也一起打包；它是我们自己的代码，所以是构建而非下载。
+bash scripts/dev/build-osd-sidecar.sh $(rustc -vV | sed -n 's/host: //p')
+
 pnpm --filter @ai4s/desktop tauri dev
 pnpm --filter @ai4s/desktop tauri build
 ```

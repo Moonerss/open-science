@@ -311,6 +311,35 @@ export async function acpServerScript(): Promise<string | null> {
   return await invoke<string | null>("acp_server_script");
 }
 
+/** Where the bundled `osd` command is, and whether the PATH wrapper is in
+ *  place. See `cli_shim.rs` for why it is a wrapper and not a symlink. */
+export interface CliShimStatus {
+  /** The bundled `osd` beside the app binary, or null in a build without it. */
+  binary: string | null;
+  /** Where the wrapper goes, whether or not it is there yet. */
+  shim: string;
+  installed: boolean;
+  /** A file that is not ours already has that name. */
+  occupied: boolean;
+  onPath: boolean;
+  /** The line that adds the wrapper's folder to PATH, when it is missing. */
+  pathHint: string | null;
+}
+
+/** Current state of the `osd` PATH wrapper (desktop only; null in browser). */
+export async function getCliShimStatus(): Promise<CliShimStatus | null> {
+  if (!isTauri) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return await invoke<CliShimStatus>("cli_shim_status");
+}
+
+/** Write the `osd` wrapper into `~/.local/bin`, and report the state after. */
+export async function installCliShim(): Promise<CliShimStatus | null> {
+  if (!isTauri) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return await invoke<CliShimStatus>("install_cli_shim");
+}
+
 /** Enable/disable + set binding and access mode; (re)binds the server. */
 export async function setGatewayConfig(
   enabled: boolean,

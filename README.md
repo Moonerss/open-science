@@ -310,6 +310,9 @@ bash scripts/dev/fetch-opencode.sh
 bash scripts/dev/fetch-uv.sh
 bash scripts/dev/fetch-skills.sh
 
+# The osd terminal client is bundled too — it is ours, so it is built, not fetched.
+bash scripts/dev/build-osd-sidecar.sh $(rustc -vV | sed -n 's/host: //p')
+
 # Run in development or build installers.
 pnpm --filter @ai4s/desktop tauri dev
 pnpm --filter @ai4s/desktop tauri build

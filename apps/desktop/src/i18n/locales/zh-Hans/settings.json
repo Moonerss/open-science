@@ -375,6 +375,18 @@
     "acpHint": "从 Zed、JetBrains、Neovim 或任何支持 Agent Client Protocol 的编辑器驱动本工作区。把下面这段 agent 配置粘贴到编辑器设置里；它通过上面的网关连接，权限以令牌为准。",
     "acpNodeHint": "编辑器会用 Node 18+ 启动这个脚本。令牌通过环境变量传入，不出现在命令行里。"
   },
+  "cli": {
+    "title": "终端命令（osd）",
+    "hint": "在终端里驱动这个工作台，或在没有显示器的机器上以无界面方式运行。命令随应用一起安装——这里只是把一个小包装脚本放到你的 PATH 上。",
+    "install": "安装命令",
+    "reinstall": "指向当前这个应用",
+    "installed": "已安装——打开一个新终端，运行 `osd status`。",
+    "notInstalled": "尚未安装。",
+    "unavailable": "这个构建没有携带 osd 命令。",
+    "occupied": "该名字下已有一个不是本应用写入的文件——请先重命名。",
+    "pathHint": "该目录还不在你的 PATH 上。把这行加进 shell 配置，然后打开一个新终端：",
+    "error": "安装 osd 命令失败"
+  },
   "memory": {
     "title": "记忆",
     "hint": "智能体在每次对话前都会读取的长期上下文，免去反复解释同一个项目。",

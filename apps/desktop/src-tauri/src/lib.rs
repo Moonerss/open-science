@@ -2,6 +2,7 @@
 // bundled OpenCode sidecar (isolated config/data + dedicated port; killed on exit).
 mod artifact_file;
 mod browser;
+mod cli_shim;
 mod debug_log;
 mod examples;
 mod gateway;
@@ -121,6 +122,8 @@ pub fn run() {
             runtime::runtime_password,
             gateway::gateway_status,
             gateway::acp_server_script,
+            cli_shim::cli_shim_status,
+            cli_shim::install_cli_shim,
             gateway::set_gateway_config,
             gateway::regenerate_gateway_token,
             runtime::stop_runtime,

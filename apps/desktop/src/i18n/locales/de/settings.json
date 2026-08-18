@@ -377,6 +377,18 @@
     "acpHint": "Diesen Arbeitsbereich aus Zed, JetBrains, Neovim oder jedem Editor steuern, der das Agent Client Protocol spricht. Diesen Agenten-Eintrag in die Editor-Einstellungen einfügen; er verbindet sich über das obige Gateway, mit den Rechten des Tokens.",
     "acpNodeHint": "Der Editor startet dieses Skript mit Node 18+. Das Token wird über die Umgebung übergeben, nicht auf der Kommandozeile."
   },
+  "cli": {
+    "title": "Terminal-Befehl (osd)",
+    "hint": "Steuere diese Werkbank vom Terminal aus oder betreibe sie ohne Oberfläche auf einer Maschine ohne Bildschirm. Der Befehl liegt in der App — hier wird nur ein kleiner Wrapper in deinen PATH gelegt.",
+    "install": "Befehl installieren",
+    "reinstall": "Auf diese App zeigen lassen",
+    "installed": "Installiert — öffne ein neues Terminal und führe `osd status` aus.",
+    "notInstalled": "Noch nicht installiert.",
+    "unavailable": "Dieser Build enthält den Befehl osd nicht.",
+    "occupied": "Unter diesem Namen liegt bereits eine Datei, die nicht von dieser App stammt — benenne sie zuerst um.",
+    "pathHint": "Dieser Ordner ist noch nicht in deinem PATH. Füge diese Zeile in dein Shell-Profil ein und öffne ein neues Terminal:",
+    "error": "Installation des osd-Befehls fehlgeschlagen"
+  },
   "memory": {
     "title": "Gedächtnis",
     "hint": "Dauerhafter Kontext, den der Agent vor jeder Unterhaltung liest — damit Sie ein Projekt nicht immer neu erklären.",

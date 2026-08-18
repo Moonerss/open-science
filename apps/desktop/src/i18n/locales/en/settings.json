@@ -377,6 +377,18 @@
     "acpHint": "Drive this workspace from Zed, JetBrains, Neovim or any editor that speaks the Agent Client Protocol. Paste this agent entry into the editor's settings; it connects over the gateway above, with the access the token allows.",
     "acpNodeHint": "The editor launches this script with Node 18+. The token is passed in the environment, not on the command line."
   },
+  "cli": {
+    "title": "Terminal command (osd)",
+    "hint": "Drive this workbench from a terminal, or serve it headless on a machine with no screen. The command ships inside the app — this puts a small wrapper on your PATH.",
+    "install": "Install command",
+    "reinstall": "Point it at this app",
+    "installed": "Installed — open a new terminal and run `osd status`.",
+    "notInstalled": "Not installed yet.",
+    "unavailable": "This build does not carry the osd command.",
+    "occupied": "A file this app did not write already has that name — rename it first.",
+    "pathHint": "That folder is not on your PATH yet. Add this line to your shell profile, then open a new terminal:",
+    "error": "Installing the osd command failed"
+  },
   "memory": {
     "title": "Memory",
     "hint": "Lasting context the agent reads before every conversation, so you stop re-explaining a project.",

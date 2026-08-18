@@ -377,6 +377,18 @@
     "acpHint": "Controla este espacio de trabajo desde Zed, JetBrains, Neovim o cualquier editor que hable el Agent Client Protocol. Pega esta entrada de agente en la configuración del editor; se conecta por la pasarela de arriba, con el acceso que permita el token.",
     "acpNodeHint": "El editor lanza este script con Node 18+. El token se pasa por el entorno, no en la línea de comandos."
   },
+  "cli": {
+    "title": "Comando de terminal (osd)",
+    "hint": "Maneja este taller desde una terminal, o sírvelo sin interfaz en una máquina sin pantalla. El comando viene dentro de la app: esto solo coloca un pequeño envoltorio en tu PATH.",
+    "install": "Instalar el comando",
+    "reinstall": "Apuntarlo a esta app",
+    "installed": "Instalado: abre una terminal nueva y ejecuta `osd status`.",
+    "notInstalled": "Aún no está instalado.",
+    "unavailable": "Esta versión no incluye el comando osd.",
+    "occupied": "Ya existe un archivo con ese nombre que no escribió esta app: renómbralo primero.",
+    "pathHint": "Esa carpeta todavía no está en tu PATH. Añade esta línea a tu perfil de shell y abre una terminal nueva:",
+    "error": "No se pudo instalar el comando osd"
+  },
   "memory": {
     "title": "Memoria",
     "hint": "Contexto duradero que el agente lee antes de cada conversación, para que no tengas que reexplicar un proyecto.",

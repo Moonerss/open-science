@@ -36,7 +36,8 @@
     "externalBin": [
       "binaries/opencode",
       "binaries/uv",
-      "binaries/agent-browser"
+      "binaries/agent-browser",
+      "binaries/osd"
     ],
     "macOS": {
       "hardenedRuntime": true,

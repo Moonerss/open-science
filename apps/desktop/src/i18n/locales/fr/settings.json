@@ -377,6 +377,18 @@
     "acpHint": "Pilotez cet espace de travail depuis Zed, JetBrains, Neovim ou tout éditeur qui parle l'Agent Client Protocol. Collez cette entrée d'agent dans les réglages de l'éditeur ; elle se connecte via la passerelle ci-dessus, avec les droits du jeton.",
     "acpNodeHint": "L'éditeur lance ce script avec Node 18+. Le jeton passe par l'environnement, pas par la ligne de commande."
   },
+  "cli": {
+    "title": "Commande de terminal (osd)",
+    "hint": "Pilotez cet atelier depuis un terminal, ou servez-le sans interface sur une machine sans écran. La commande est livrée dans l'application — ceci ne fait que placer un petit script d'appel dans votre PATH.",
+    "install": "Installer la commande",
+    "reinstall": "La pointer vers cette application",
+    "installed": "Installée — ouvrez un nouveau terminal et lancez `osd status`.",
+    "notInstalled": "Pas encore installée.",
+    "unavailable": "Cette version n'embarque pas la commande osd.",
+    "occupied": "Un fichier que cette application n'a pas écrit porte déjà ce nom — renommez-le d'abord.",
+    "pathHint": "Ce dossier n'est pas encore dans votre PATH. Ajoutez cette ligne à votre profil shell, puis ouvrez un nouveau terminal :",
+    "error": "L'installation de la commande osd a échoué"
+  },
   "memory": {
     "title": "Mémoire",
     "hint": "Un contexte durable que l’agent lit avant chaque conversation, pour ne plus réexpliquer un projet.",

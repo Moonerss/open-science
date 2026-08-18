@@ -63,6 +63,7 @@ import { customProviderId } from "@/lib/customProviderId";
 import { listProvidersWithAvailability } from "@/lib/zenModels";
 import { RemoteComputeCard } from "@/components/settings/RemoteComputeCard";
 import { RemoteAccessCard } from "@/components/settings/RemoteAccessCard";
+import { TerminalCliCard } from "@/components/settings/TerminalCliCard";
 import { AcpAgentsCard } from "@/components/settings/AcpAgentsCard";
 import { ModalCard } from "@/components/settings/ModalCard";
 import { DataFlowCard } from "@/components/settings/DataFlowCard";
@@ -1759,7 +1760,12 @@ export function SettingsPage() {
         )}
 
         {/* ---- Remote access (API gateway: CLI / LAN web / tunnel) ---- */}
-        {section === "remote" && <RemoteAccessCard />}
+        {section === "remote" && (
+          <>
+            <RemoteAccessCard />
+            <TerminalCliCard />
+          </>
+        )}
 
         {/* ---- Privacy & data flow ---- */}
         {section === "privacy" && <DataFlowCard model={defaultModel} workspace={wsPath} />}

@@ -207,6 +207,9 @@ pnpm install
 bash scripts/dev/fetch-opencode.sh
 bash scripts/dev/fetch-uv.sh
 bash scripts/dev/fetch-skills.sh
+
+# 터미널 클라이언트 osd도 함께 들어간다. 우리 코드이므로 내려받지 않고 빌드한다.
+bash scripts/dev/build-osd-sidecar.sh $(rustc -vV | sed -n 's/host: //p')
 pnpm --filter @ai4s/desktop tauri dev
 pnpm --filter @ai4s/desktop tauri build
 ```

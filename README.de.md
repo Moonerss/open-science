@@ -208,6 +208,9 @@ pnpm install
 bash scripts/dev/fetch-opencode.sh
 bash scripts/dev/fetch-uv.sh
 bash scripts/dev/fetch-skills.sh
+
+# Der Terminal-Client osd wird mitgeliefert — er ist unser Code, wird also gebaut, nicht geladen.
+bash scripts/dev/build-osd-sidecar.sh $(rustc -vV | sed -n 's/host: //p')
 pnpm --filter @ai4s/desktop tauri dev
 pnpm --filter @ai4s/desktop tauri build
 ```

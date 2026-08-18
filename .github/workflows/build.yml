@@ -110,6 +110,14 @@ jobs:
           done
           exit "$status"
 
+      # `osd` is a sidecar like the other three, except that it is ours and
+      # compiles the web client into itself — so it is built here, BEFORE the
+      # Tauri build bundles it. The step fails loudly if the binary does not
+      # appear, because Tauri would otherwise fail its own externalBin check.
+      - name: Build the osd sidecar
+        shell: bash
+        run: bash scripts/dev/build-osd-sidecar.sh ${{ matrix.target }}
+
       - name: Configure macOS release signing
         if: runner.os == 'macOS'
         shell: bash
