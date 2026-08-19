@@ -39,7 +39,7 @@
 
 ## 最新动态
 
-- **2026-08-18** — 🖥️ **无屏也能跑，终端命令随包附带。** `osd server` 在没有显示器的机器上启动整套工作台——工作区、智能体运行时，以及*同一套* Web UI；`osd session send … --wait` 让脚本或另一个智能体来驱动它。`osd` 现在装在桌面安装包里，首次启动自动进入 PATH；服务器上用压缩包，什么都不用装。模型、密钥、审批都能在终端配置（`osd model`、`osd auth`、`osd approval`）。 *(未发布)*
+- **2026-08-18** — 🖥️ **无屏也能跑，终端命令随包附带。** `osd server` 在没有显示器的机器上启动整套工作台——工作区、智能体运行时，以及*同一套* Web UI；`osd session send … --wait` 让脚本或另一个智能体来驱动它。`osd` 现在装在桌面安装包里，首次启动自动进入 PATH；服务器上用压缩包，什么都不用装。模型、密钥、审批都能在终端配置（`osd model`、`osd auth`、`osd approval`）。
 - **2026-08-13** — 🔌 **双向支持 Agent Client Protocol。** 在本应用里直接驱动 Codex、Gemini CLI、Claude Code 等任意 ACP 智能体——沿用它自己的模型、历史，以及你在本应用配置的 MCP 连接器；反过来，也可以从 Zed、JetBrains、Neovim 里驱动 Open Science。 *(v0.4.0)*
 - **2026-08-01** — 🗂️ **项目、记忆与完整历史。** 会话可以归入命名项目（**就地**导入已有仓库，不做复制），智能体获得持久的全局记忆与项目记忆，全部历史对话都能在可搜索的历史视图中找到，并支持归档、恢复与导出。 *(v0.3.1)*
 - **2026-07-24** — 🪟 **分屏平铺。** 会话可以并排平铺、拖拽分栏重新停靠、保留多个互不干扰的「屏幕」，每个分栏还能用不同的模型。 *(v0.3.0)*
@@ -206,8 +206,6 @@ sudo rpm -i Open.Science-*.rpm
 
 科研机器通常没有屏幕。`osd` 就是没有屏幕的同一套工作台：同样的工作区布局、同样的智能体运行时、同样的项目、同样的 Web UI——只是通过 HTTP 提供，而不是画在窗口里。
 
-**在你自己的机器上，它已经装好了。** 桌面安装包里带着 `osd`，应用首次启动时会把它放到你的 PATH 上，所以新开一个终端就能用，不需要任何设置。它只写一个小的包装脚本（`~/.local/bin/osd`，或者当终端本来就搜索 `~/bin` 时放那里）——绝不是符号链接，因为 `osd` 要在自己真实可执行文件的旁边找运行时。如果那个目录不在 PATH 上，应用会把它加进你的登录 profile，并在「设置 → 远程访问」里说明改了哪个文件。你 shell 上的其他东西一概不动。
-
 **在服务器上，用压缩包。** Releases 里的 `osd-<version>-<target>` 解压即跑，什么都不用装——已在一个不加任何软件包的空白 Ubuntu 容器里验证过。
 
 ```bash
@@ -236,6 +234,8 @@ Windows 上同样的命令在 PowerShell 里可用，只是 shell 语法不同�
 $id = osd session new --project "Reef survey"
 osd session send $id "Fit the 2015-2024 bleaching trend and write report.md" --wait
 ```
+
+**在你自己的机器上，它已经装好了。** 桌面安装包里带着 `osd`，应用首次启动时会把它放到你的 PATH 上，所以新开一个终端就能用，不需要任何设置。它只写一个小的包装脚本（`~/.local/bin/osd`，或者当终端本来就搜索 `~/bin` 时放那里）——绝不是符号链接，因为 `osd` 要在自己真实可执行文件的旁边找运行时。如果那个目录不在 PATH 上，应用会把它加进你的登录 profile，并在「设置 → 远程访问」里说明改了哪个文件。你 shell 上的其他东西一概不动。
 
 `--wait` 在这一轮真正跑完时才返回，而不是在被接受时；如果这一轮什么都没答，它会明确报错。`--json` 输出接口原样的响应，供脚本解析。
 
@@ -363,7 +363,7 @@ pnpm lint
   title   = {Open Science Desktop: a local-first, model-agnostic AI research workbench},
   year    = {2026},
   version = {0.5.0},
-  doi     = {10.5281/zenodo.21967622},
+  doi     = {10.5281/zenodo.22004919},
   url     = {https://github.com/ai4s-research/open-science},
   license = {MIT}
 }

@@ -35,7 +35,7 @@ Formerly Open Science. Una alternativa desktop open source a Claude Science y wo
 
 ## Novedades
 
-- **2026-08-18** — 🖥️ **Funciona sin pantalla.** `osd server` levanta el banco de trabajo completo — workspace, runtime del agente y la *misma* UI web — en una máquina sin display, y `osd session send … --wait` lo maneja desde un script o desde otro agente. Un archivo comprimido, sin instalador. `osd` viaja dentro del instalador de escritorio y se pone en tu PATH al primer arranque; en un servidor basta el archivo comprimido. Modelos, claves y aprobaciones se configuran desde la terminal (`osd model`, `osd auth`, `osd approval`). *(sin publicar)*
+- **2026-08-18** — 🖥️ **Funciona sin pantalla.** `osd server` levanta el banco de trabajo completo — workspace, runtime del agente y la *misma* UI web — en una máquina sin display, y `osd session send … --wait` lo maneja desde un script o desde otro agente. Un archivo comprimido, sin instalador. `osd` viaja dentro del instalador de escritorio y se pone en tu PATH al primer arranque; en un servidor basta el archivo comprimido. Modelos, claves y aprobaciones se configuran desde la terminal (`osd model`, `osd auth`, `osd approval`).
 - **2026-08-13** — 🔌 **Habla el Agent Client Protocol, en ambas direcciones.** Maneja Codex, Gemini CLI, Claude Code o cualquier otro agente ACP desde dentro de esta app — con sus propios modelos, su historial y tus conectores MCP — o maneja Open Science desde Zed, JetBrains o Neovim. *(v0.4.0)*
 - **2026-08-01** — 🗂️ **Proyectos, memoria e historial completo.** Agrupa sesiones en proyectos con nombre (un repositorio existente se importa *en su sitio*, sin copiarlo), da al agente memoria persistente global y por proyecto, y alcanza cualquier conversación pasada desde un historial buscable con archivar, restaurar y exportar. *(v0.3.1)*
 - **2026-07-24** — 🪟 **Paneles divididos.** Coloca sesiones en mosaico, arrastra paneles para reacomodarlos, mantén varias pantallas independientes y usa un modelo distinto en cada panel. *(v0.3.0)*
@@ -168,15 +168,6 @@ En Windows, usa **More info -> Run anyway** en SmartScreen.
 
 Una máquina de investigación normalmente no tiene pantalla. `osd` es el mismo banco de trabajo sin ella: la misma organización del workspace, el mismo runtime del agente, los mismos proyectos y la misma UI web — servida por HTTP en lugar de dibujada en una ventana.
 
-**En tu propia máquina ya está instalado.** El instalador de escritorio lleva
-`osd` dentro, y la app lo pone en tu PATH la primera vez que arranca: una
-terminal nueva ya tiene el comando, sin configurar nada. Escribe un pequeño
-envoltorio (`~/.local/bin/osd`, o `~/bin` cuando una terminal ya busca ahí) —
-nunca un enlace simbólico, porque `osd` encuentra su runtime junto a su
-ejecutable real. Si esa carpeta no está en el PATH, la app la añade a tu perfil
-de inicio y Ajustes → Acceso remoto dice qué archivo tocó. Nada más de tu shell
-cambia.
-
 **En un servidor, usa el archivo comprimido.** `osd-<version>-<target>` de
 Releases se descomprime y funciona sin instalar nada — verificado en un
 contenedor Ubuntu desnudo, sin añadir un solo paquete.
@@ -213,6 +204,15 @@ del shell:
 $id = osd session new --project "Reef survey"
 osd session send $id "Fit the 2015-2024 bleaching trend and write report.md" --wait
 ```
+
+**En tu propia máquina ya está instalado.** El instalador de escritorio lleva
+`osd` dentro, y la app lo pone en tu PATH la primera vez que arranca: una
+terminal nueva ya tiene el comando, sin configurar nada. Escribe un pequeño
+envoltorio (`~/.local/bin/osd`, o `~/bin` cuando una terminal ya busca ahí) —
+nunca un enlace simbólico, porque `osd` encuentra su runtime junto a su
+ejecutable real. Si esa carpeta no está en el PATH, la app la añade a tu perfil
+de inicio y Ajustes → Acceso remoto dice qué archivo tocó. Nada más de tu shell
+cambia.
 
 `--wait` vuelve cuando el turno ha terminado, no cuando fue aceptado, y falla de forma explícita si no produjo respuesta. `--json` imprime la respuesta de la propia API, para scripts. Las aprobaciones siguen vigentes — el agente pregunta antes de ejecutar comandos, y `osd permission ls` / `osd permission allow <id>` es cómo se responde sin ventana.
 
@@ -335,7 +335,7 @@ Si usas Open Science Desktop en tu investigación, cítalo así:
   title   = {Open Science Desktop: a local-first, model-agnostic AI research workbench},
   year    = {2026},
   version = {0.5.0},
-  doi     = {10.5281/zenodo.21967622},
+  doi     = {10.5281/zenodo.22004919},
   url     = {https://github.com/ai4s-research/open-science},
   license = {MIT}
 }

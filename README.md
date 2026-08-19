@@ -40,7 +40,7 @@ runs, and review into one auditable desktop workflow.
 
 ## News
 
-- **2026-08-18** — 🖥️ **Runs without a screen, and the terminal command comes with it.** `osd server` starts the whole workbench — workspace, agent runtime, and the *same* web UI — on a machine with no display, and `osd session send … --wait` drives it from a script or another agent. `osd` ships inside the desktop installer and puts itself on your PATH on first launch; on a server the archive needs nothing installed. Models, keys and approvals are all configurable from the terminal (`osd model`, `osd auth`, `osd approval`). *(unreleased)*
+- **2026-08-18** — 🖥️ **Runs without a screen, and the terminal command comes with it.** `osd server` starts the whole workbench — workspace, agent runtime, and the *same* web UI — on a machine with no display, and `osd session send … --wait` drives it from a script or another agent. `osd` ships inside the desktop installer and puts itself on your PATH on first launch; on a server the archive needs nothing installed. Models, keys and approvals are all configurable from the terminal (`osd model`, `osd auth`, `osd approval`).
 - **2026-08-13** — 🔌 **Speaks the Agent Client Protocol, both directions.** Drive Codex, Gemini CLI, Claude Code, or any other ACP agent from inside this app — with its own models, history, and your MCP connectors — or drive Open Science itself from Zed, JetBrains, or Neovim. *(v0.4.0)*
 - **2026-08-01** — 🗂️ **Projects, memory, and full history.** Group sessions into named projects (import an existing repo *in place*, no copying), give the agent persistent global and project memory, and reach every past conversation through a searchable history with archive, restore, and export. *(v0.3.1)*
 - **2026-07-24** — 🪟 **Split-pane tiling.** Tile sessions side by side, drag panes to re-dock them, keep several independent Screens, and run a different model in each pane. *(v0.3.0)*
@@ -246,14 +246,6 @@ A research machine usually has no screen. `osd` is the same workbench without
 one: the same workspace layout, the same agent runtime, the same projects, and
 the same web UI — served over HTTP instead of drawn in a window.
 
-**On your own machine it is already installed.** The desktop installer carries
-`osd`, and the app puts it on your PATH the first time it starts, so a new
-terminal has the command with nothing to set up. It writes one small wrapper
-(`~/.local/bin/osd`, or `~/bin` when a terminal already searches that) — never a
-symlink, because `osd` finds its runtime next to its real executable. If that
-folder is not on PATH, the app adds it to your login profile and Settings →
-Remote Access says which file it touched. Nothing else on your shell is changed.
-
 **On a server, take the archive.** `osd-<version>-<target>` from Releases
 unpacks and runs with nothing installed — verified on a bare Ubuntu container
 with no packages added at all.
@@ -292,6 +284,14 @@ differs:
 $id = osd session new --project "Reef survey"
 osd session send $id "Fit the 2015-2024 bleaching trend and write report.md" --wait
 ```
+
+**On your own machine it is already installed.** The desktop installer carries
+`osd`, and the app puts it on your PATH the first time it starts, so a new
+terminal has the command with nothing to set up. It writes one small wrapper
+(`~/.local/bin/osd`, or `~/bin` when a terminal already searches that) — never a
+symlink, because `osd` finds its runtime next to its real executable. If that
+folder is not on PATH, the app adds it to your login profile and Settings →
+Remote Access says which file it touched. Nothing else on your shell is changed.
 
 `--wait` returns when the turn is finished, not when it was accepted, and fails
 loudly if it produced no reply. `--json` prints the API's own response for
@@ -454,7 +454,7 @@ If you use Open Science Desktop in your research, please cite it:
   title   = {Open Science Desktop: a local-first, model-agnostic AI research workbench},
   year    = {2026},
   version = {0.5.0},
-  doi     = {10.5281/zenodo.21967622},
+  doi     = {10.5281/zenodo.22004919},
   url     = {https://github.com/ai4s-research/open-science},
   license = {MIT}
 }
