@@ -189,11 +189,21 @@ fn runs_from_removable_image(binary: &Path) -> bool {
 /// A wrapper that execs `binary`, in the shell the platform runs.
 fn wrapper_script(binary: &Path) -> String {
     let path = binary.display();
+    // Uninstalling the app cannot reach this file: on macOS it is a drag to the
+    // trash, and on the other platforms the uninstaller runs as a different user
+    // than the one whose PATH this is. So the wrapper notices that the app is
+    // gone and removes ITSELF the next time anyone types `osd`, rather than
+    // leaving a command that fails with a puzzling "no such file".
     if cfg!(windows) {
         format!(
             "@echo off\r\n\
              rem {SIGNATURE}. A wrapper, not a symlink: osd finds its sidecars\r\n\
              rem and bundled resources next to the real executable.\r\n\
+             if not exist \"{path}\" (\r\n\
+             echo Open Science Desktop is no longer installed; removing this leftover osd command. 1>&2\r\n\
+             del \"%~f0\" >nul 2>&1\r\n\
+             exit /b 127\r\n\
+             )\r\n\
              \"{path}\" %*\r\n"
         )
     } else {
@@ -202,6 +212,11 @@ fn wrapper_script(binary: &Path) -> String {
              # {SIGNATURE}. A wrapper, not a symlink: osd finds its sidecars and\n\
              # bundled resources next to the real executable, and macOS does not\n\
              # resolve a symlink for current_exe().\n\
+             if [ ! -x \"{path}\" ]; then\n\
+             \techo \"Open Science Desktop is no longer installed; removing this leftover osd command.\" >&2\n\
+             \trm -f -- \"$0\"\n\
+             \texit 127\n\
+             fi\n\
              exec \"{path}\" \"$@\"\n"
         )
     }
@@ -216,30 +231,49 @@ fn path_hint(dir: &Path) -> String {
 /// The login profile to extend, for the shell the user actually runs. A file
 /// that does not exist yet is still the right answer: creating `~/.zprofile` on
 /// a machine whose shell is zsh is what zsh itself would read next login.
-fn login_profile_for(home: &Path, shell: &str) -> PathBuf {
-    let name = if shell.ends_with("zsh") {
-        ".zprofile"
+/// The files that have to carry the PATH line for the shell the user runs.
+///
+/// Two of them, not one: a LOGIN shell reads `.zprofile`/`.bash_profile`, an
+/// interactive one reads `.zshrc`/`.bashrc`, and which you get depends on how
+/// the terminal was started. macOS terminals log in, tmux panes and many
+/// editors' terminals do not — writing only the login file left `osd` missing
+/// in exactly the windows a developer lives in. Both get the same guarded
+/// block, and both are idempotent, so writing both costs nothing.
+fn profiles_for(home: &Path, shell: &str) -> Vec<PathBuf> {
+    let names: &[&str] = if shell.ends_with("zsh") {
+        &[".zprofile", ".zshrc"]
     } else if shell.ends_with("bash") {
-        ".bash_profile"
+        &[".bash_profile", ".bashrc"]
     } else {
         // An unknown shell still reads ~/.profile in the POSIX case.
-        ".profile"
+        &[".profile"]
     };
-    home.join(name)
+    names.iter().map(|n| home.join(n)).collect()
 }
 
-fn login_profile() -> Result<PathBuf, String> {
-    Ok(login_profile_for(
+fn login_profiles() -> Result<Vec<PathBuf>, String> {
+    Ok(profiles_for(
         &home()?,
         &std::env::var("SHELL").unwrap_or_default(),
     ))
 }
 
-/// Append the PATH line to the login profile, once. Returns the file it wrote.
-fn extend_login_profile(dir: &Path) -> Result<PathBuf, String> {
-    let profile = login_profile()?;
-    extend_profile_file(&profile, dir)?;
-    Ok(profile)
+/// Append the PATH line to every profile that shell reads, once each. Returns
+/// the files, so the settings card can name exactly what was touched.
+fn extend_login_profiles(dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let profiles = login_profiles()?;
+    let mut written = Vec::new();
+    for profile in profiles {
+        match extend_profile_file(&profile, dir) {
+            Ok(()) => written.push(profile),
+            // One unwritable file must not cost the user the other one.
+            Err(e) => eprintln!("could not extend {}: {e}", profile.display()),
+        }
+    }
+    if written.is_empty() {
+        return Err("no shell profile could be written".into());
+    }
+    Ok(written)
 }
 
 /// The write itself, against a named file: no environment, so a test can drive
@@ -371,8 +405,8 @@ fn ensure_reachable(dir: &Path) -> (PathRoute, Option<PathBuf>) {
         };
     }
     #[cfg(not(windows))]
-    match extend_login_profile(dir) {
-        Ok(profile) => (PathRoute::ShellProfile, Some(profile)),
+    match extend_login_profiles(dir) {
+        Ok(profiles) => (PathRoute::ShellProfile, profiles.into_iter().next()),
         Err(e) => {
             eprintln!("could not extend the login profile: {e}");
             (PathRoute::Unreachable, None)
@@ -450,11 +484,13 @@ pub fn cli_shim_status() -> Result<CliShimStatus, String> {
         }
         #[cfg(not(windows))]
         {
-            let profile = login_profile().ok();
-            let arranged = profile
-                .as_ref()
-                .and_then(|p| std::fs::read_to_string(p).ok())
-                .is_some_and(|t| t.contains(PROFILE_MARKER));
+            let arranged = login_profiles()
+                .unwrap_or_default()
+                .iter()
+                .any(|p| {
+                    std::fs::read_to_string(p)
+                        .is_ok_and(|t| t.contains(PROFILE_MARKER))
+                });
             if arranged {
                 PathRoute::ShellProfile
             } else {
@@ -463,7 +499,7 @@ pub fn cli_shim_status() -> Result<CliShimStatus, String> {
         }
     };
     let profile = match route {
-        PathRoute::ShellProfile => login_profile().ok(),
+        PathRoute::ShellProfile => login_profiles().ok().and_then(|p| p.into_iter().next()),
         _ => None,
     };
     Ok(status_for(bundled_osd(), &shim, route, profile))
@@ -595,16 +631,82 @@ mod tests {
     }
 
     #[test]
-    fn the_profile_follows_the_shell_the_user_actually_runs() {
-        let home = Path::new("/home/u");
-        assert_eq!(login_profile_for(home, "/bin/zsh"), home.join(".zprofile"));
-        assert_eq!(login_profile_for(home, "/bin/bash"), home.join(".bash_profile"));
+    fn a_wrapper_whose_app_is_gone_says_so_and_removes_itself() {
+        // Uninstalling cannot reach a per-user file in $HOME, so the leftover
+        // command has to clean up the first time it is used. Run as a real
+        // script rather than asserted as text: `rm -f -- "$0"` while the shell
+        // is reading the file is the part worth proving.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tmp("gone");
+        let missing = dir.join("Open Science.app/Contents/MacOS/osd");
+        let shim = dir.join("osd");
+        std::fs::write(&shim, wrapper_script(&missing)).unwrap();
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let out = std::process::Command::new("sh").arg(&shim).arg("status").output().unwrap();
+        assert_eq!(out.status.code(), Some(127), "a missing app is not a success");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains("no longer installed"), "{stderr}");
+        assert!(!shim.exists(), "the leftover command must delete itself");
+
+        // And with the app present it still just runs it, arguments intact.
+        let real = dir.join("real-osd");
+        std::fs::write(&real, "#!/bin/sh\necho \"ran with: $*\"\n").unwrap();
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(&shim, wrapper_script(&real)).unwrap();
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let out = std::process::Command::new("sh")
+            .arg(&shim)
+            .args(["session", "send", "an argument with spaces"])
+            .output()
+            .unwrap();
+        assert!(out.status.success());
         assert_eq!(
-            login_profile_for(home, "/usr/local/bin/fish"),
-            home.join(".profile"),
-            "an unknown shell still reads ~/.profile"
+            String::from_utf8_lossy(&out.stdout).trim(),
+            "ran with: session send an argument with spaces"
         );
-        assert_eq!(login_profile_for(home, ""), home.join(".profile"));
+        assert!(shim.exists(), "a working wrapper must not delete itself");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn both_the_login_file_and_the_interactive_one_get_the_path_line() {
+        // A tmux pane or an editor terminal runs zsh WITHOUT logging in, so it
+        // reads .zshrc and never .zprofile. Writing only the login file left
+        // `osd` missing in exactly those windows.
+        let home = Path::new("/home/u");
+        assert_eq!(
+            profiles_for(home, "/bin/zsh"),
+            vec![home.join(".zprofile"), home.join(".zshrc")]
+        );
+        assert_eq!(
+            profiles_for(home, "/bin/bash"),
+            vec![home.join(".bash_profile"), home.join(".bashrc")]
+        );
+        assert_eq!(profiles_for(home, "/usr/local/bin/fish"), vec![home.join(".profile")]);
+    }
+
+    #[test]
+    fn every_profile_gets_the_block_exactly_once() {
+        let home = tmp("profiles");
+        let dir = home.join(".local/bin");
+        let files = profiles_for(&home, "/bin/zsh");
+        std::fs::write(&files[1], "alias ll='ls -la'").unwrap();
+
+        for file in &files {
+            extend_profile_file(file, &dir).unwrap();
+            extend_profile_file(file, &dir).unwrap();
+        }
+        for file in &files {
+            let text = std::fs::read_to_string(file).unwrap();
+            assert_eq!(text.matches(PROFILE_MARKER).count(), 1, "{file:?}: {text}");
+            assert!(text.contains(&dir.display().to_string()));
+        }
+        assert!(
+            std::fs::read_to_string(&files[1]).unwrap().starts_with("alias ll='ls -la'\n"),
+            "an existing rc file keeps what it had"
+        );
+        std::fs::remove_dir_all(&home).unwrap();
     }
 
     #[test]
