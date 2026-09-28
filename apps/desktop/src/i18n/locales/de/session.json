@@ -33,7 +33,9 @@
     "newNotebook": "Neues Notebook",
     "newMarkdown": "Neues Markdown",
     "splitRightShort": "Rechts teilen",
-    "splitDownShort": "Unten teilen"
+    "splitDownShort": "Unten teilen",
+    "defaultProject": "Standard",
+    "projectMenu": "Projekt wechseln"
   },
   "composer": {
     "placeholder": {
@@ -490,7 +492,8 @@
       "paste": "Einfügen",
       "selectAll": "Alles auswählen",
       "clear": "Bildschirm leeren",
-      "revealCwd": "Arbeitsordner anzeigen"
+      "revealCwd": "Arbeitsordner anzeigen",
+      "resumeAgent": "Letzte {{agent}}-Sitzung fortsetzen"
     },
     "rename": "Terminal umbenennen…",
     "confirmClose": {

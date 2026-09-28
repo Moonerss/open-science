@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useRuntimeStore } from "@/lib/runtime";
 import { findLeaf, leaves, recentScreens, useLayoutStore } from "@/lib/layout";
+import { projectIdForGroup } from "@/lib/projectScope";
 import { useIsMobile } from "@/lib/useIsMobile";
 import { isGatewayWeb } from "@/lib/webMode";
 import { cn } from "@/lib/cn";
@@ -205,6 +206,27 @@ export function LiveSessionPage() {
     if (sessions.length === 0) return;
     pruneSessions(new Set(sessions.map((s) => s.id)));
   }, [sessions, pruneSessions]);
+
+  // File Screens under their projects once both lists are in: Screens saved
+  // before Screens had projects, and those of a project that was removed.
+  const projects = useRuntimeStore((s) => s.projects);
+  const projectsLoaded = useRuntimeStore((s) => s.projectsLoaded);
+  // Orphans only on the first complete list: later lists can lag a project
+  // that is being created (see `reconcileProjects`); in-app removals are
+  // handled where they happen (`releaseProject`).
+  const orphansJudged = useRef(false);
+  useEffect(() => {
+    if (!projectsLoaded) return;
+    const orphans = !orphansJudged.current;
+    orphansJudged.current = true;
+    useLayoutStore
+      .getState()
+      .reconcileProjects(
+        new Set(projects.map((p) => p.id)),
+        (g) => projectIdForGroup(g, sessions, projects),
+        orphans,
+      );
+  }, [projectsLoaded, projects, sessions]);
 
   // Screens the user has been in lately, newest first — the ones kept mounted.
   const [recent, setRecent] = useState<string[]>([activeGroupId]);

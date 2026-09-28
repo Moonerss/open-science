@@ -4,6 +4,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { PanelLeft } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sidebar } from "@/components/sidebar/Sidebar";
+import { JumpPalette } from "@/components/jump-palette/JumpPalette";
 import { CommandPalette } from "@/components/command-palette/CommandPalette";
 import { PaneDragGhost } from "@/components/session/PaneDragGhost";
 import { StatusBar } from "@/components/status-bar/StatusBar";
@@ -21,7 +22,14 @@ import { useUpdateStore } from "@/lib/update";
 import { isGatewayWeb, gatewayToken, setUnauthorizedHandler } from "@/lib/webMode";
 import { WebTokenGate } from "@/components/web/WebTokenGate";
 import { useIsMobile } from "@/lib/useIsMobile";
-import { findLeaf, leaves, useLayoutStore, type SplitDir } from "@/lib/layout";
+import {
+  findLeaf,
+  leaves,
+  projectGroups,
+  selectActiveProjectId,
+  useLayoutStore,
+  type SplitDir,
+} from "@/lib/layout";
 import { useNativeContextMenuGuard } from "@/lib/nativeMenu";
 
 export function AppShell() {
@@ -89,12 +97,14 @@ export function AppShell() {
         e.preventDefault();
         layout.addGroup();
       } else if (e.shiftKey && (key === "]" || key === "[")) {
-        // Cmd+Shift+] / [ cycles groups.
+        // Cmd+Shift+] / [ cycles the active project's Screens — the ones the
+        // bar shows; another project's are a ⌘J away.
         e.preventDefault();
-        const i = layout.groups.findIndex((g) => g.id === layout.activeGroupId);
-        const n = layout.groups.length;
+        const mine = projectGroups(layout.groups, selectActiveProjectId(layout));
+        const i = mine.findIndex((g) => g.id === layout.activeGroupId);
+        const n = mine.length;
         const j = key === "]" ? (i + 1) % n : (i - 1 + n) % n;
-        layout.setActiveGroup(layout.groups[j].id);
+        layout.setActiveGroup(mine[j].id);
       } else if (e.shiftKey && key === "enter") {
         e.preventDefault();
         layout.toggleZoom();
@@ -257,6 +267,7 @@ export function AppShell() {
       </div>
       <StatusBar />
       <CommandPalette />
+      <JumpPalette />
       <Toaster />
       {/* Sign-in for an interactively authenticated compute host (#73): app-wide,
           because the prompt has to reach the user wherever the need arose — the

@@ -33,7 +33,9 @@
     "newNotebook": "New Notebook",
     "newMarkdown": "New Markdown",
     "splitRightShort": "Split right",
-    "splitDownShort": "Split down"
+    "splitDownShort": "Split down",
+    "defaultProject": "Default",
+    "projectMenu": "Switch project"
   },
   "composer": {
     "placeholder": {
@@ -490,7 +492,8 @@
       "paste": "Paste",
       "selectAll": "Select All",
       "clear": "Clear",
-      "revealCwd": "Reveal working folder"
+      "revealCwd": "Reveal working folder",
+      "resumeAgent": "Resume last {{agent}} session"
     },
     "rename": "Rename terminal…",
     "confirmClose": {

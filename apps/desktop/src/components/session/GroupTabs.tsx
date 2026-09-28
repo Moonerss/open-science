@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Bot,
+  Check,
+  ChevronDown,
   FileText,
+  Folder,
   FolderTree,
   NotebookPen,
   Pencil,
@@ -12,7 +15,15 @@ import {
   PanelLeft,
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { groupLabel, useLayoutStore, type LayoutGroup, type PaneContent } from "@/lib/layout";
+import {
+  DEFAULT_PROJECT,
+  groupLabel,
+  projectGroups,
+  selectActiveProjectId,
+  useLayoutStore,
+  type LayoutGroup,
+  type PaneContent,
+} from "@/lib/layout";
 import { createMarkdown, createNotebook } from "@/lib/newFile";
 import { toast } from "@/lib/toast";
 import { useRuntimeStore } from "@/lib/runtime";
@@ -44,9 +55,10 @@ function NewScreenButton({ onNewScreen }: { onNewScreen: () => void }) {
   const [agents, setAgents] = useState<CliAgent[]>([]);
   const [busy, setBusy] = useState(false);
   const addGroup = useLayoutStore((s) => s.addGroup);
-  // A terminal opens where the work is. Without it every shell starts in the
-  // app's own working directory, which is never where the user's files are.
-  const workspace = useRuntimeStore((s) => s.workspace);
+  // A terminal opens where the work is: the active project's folder, or for
+  // Default the runtime's workspace. Without it every shell starts in the app's
+  // own working directory, which is never where the user's files are.
+  const cwd = useActiveProjectPath();
 
   // Once per mount: an install does not appear mid-session, and probing PATH on
   // every open would put a filesystem walk behind a menu.
@@ -113,7 +125,7 @@ function NewScreenButton({ onNewScreen }: { onNewScreen: () => void }) {
           </DropdownMenu.Item>
           <DropdownMenu.Item
             // eslint-disable-next-line i18next/no-literal-string -- PaneContent kind, not UI copy
-            onSelect={() => openScreen({ kind: "terminal", cwd: workspace ?? undefined })}
+            onSelect={() => openScreen({ kind: "terminal", cwd })}
             className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 outline-none data-[highlighted]:bg-surface-2"
           >
             <TerminalIcon size={13} className="shrink-0 text-muted" />
@@ -167,6 +179,74 @@ function NewScreenButton({ onNewScreen }: { onNewScreen: () => void }) {
   );
 }
 
+/** The folder the active project works in: its own, or the runtime's
+ *  workspace for Default. */
+export function useActiveProjectPath(): string | undefined {
+  const projectId = useLayoutStore(selectActiveProjectId);
+  const projects = useRuntimeStore((s) => s.projects);
+  const workspace = useRuntimeStore((s) => s.workspace);
+  if (projectId !== DEFAULT_PROJECT) {
+    const path = projects.find((p) => p.id === projectId)?.path;
+    if (path) return path;
+  }
+  return workspace ?? undefined;
+}
+
+/**
+ * The project whose Screens the bar is showing, and the way to another one.
+ *
+ * The bar is Project → Screens: its tabs are the active project's Screens
+ * only, so it has to say which project that is — and switching here is the
+ * same as picking the project in the sidebar or with ⌘J.
+ */
+function ProjectSwitcher() {
+  const { t } = useTranslation("session");
+  const projectId = useLayoutStore(selectActiveProjectId);
+  const setActiveProject = useLayoutStore((s) => s.setActiveProject);
+  const projects = useRuntimeStore((s) => s.projects);
+  const current =
+    projectId === DEFAULT_PROJECT
+      ? t("group.defaultProject")
+      : (projects.find((p) => p.id === projectId)?.name ?? t("group.defaultProject"));
+  const choices = [
+    { id: DEFAULT_PROJECT, name: t("group.defaultProject") },
+    ...[...projects].sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ id: p.id, name: p.name })),
+  ];
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          aria-label={t("group.projectMenu")}
+          title={t("group.projectMenu")}
+          className="mr-1 flex h-7 max-w-[180px] shrink-0 items-center gap-1 rounded-md px-2 text-[12px] font-medium text-text hover:bg-surface-2"
+        >
+          <Folder size={13} className="shrink-0 text-accent" />
+          <span className="truncate">{current}</span>
+          <ChevronDown size={12} className="shrink-0 text-muted" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="start"
+          sideOffset={6}
+          className="z-50 max-h-[60vh] min-w-[200px] overflow-y-auto rounded-card border border-border bg-surface p-1 text-[13px] text-text shadow-pop"
+        >
+          {choices.map((c) => (
+            <DropdownMenu.Item
+              key={c.id || "default"}
+              onSelect={() => setActiveProject(c.id)}
+              className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 outline-none data-[highlighted]:bg-surface-2"
+            >
+              <Check size={13} className={cn("shrink-0", c.id === projectId ? "text-accent" : "invisible")} />
+              <span className="truncate">{c.name}</span>
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
 /**
  * Does closing this Screen need a confirmation?
  *
@@ -188,7 +268,10 @@ function closeNeedsConfirm(group: LayoutGroup, ephemeralGroupId: string | null):
 
 export function GroupTabs() {
   const { t } = useTranslation(["session", "nav"]);
-  const groups = useLayoutStore((s) => s.groups);
+  const allGroups = useLayoutStore((s) => s.groups);
+  const projectId = useLayoutStore(selectActiveProjectId);
+  // Only the active project's Screens: the bar is that project's.
+  const groups = projectGroups(allGroups, projectId);
   const activeGroupId = useLayoutStore((s) => s.activeGroupId);
   const ephemeralGroupId = useLayoutStore((s) => s.ephemeralGroupId);
   const setActiveGroup = useLayoutStore((s) => s.setActiveGroup);
@@ -252,6 +335,7 @@ export function GroupTabs() {
             part of the header was the hairline above and below this row. Tabs
             and the + button stay undraggable: a tab is never the drag element
             itself, and Tauri treats <button> as clickable, which blocks drag. */}
+        <ProjectSwitcher />
         <div
           data-tauri-drag-region={overlayTitlebar || undefined}
           className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"

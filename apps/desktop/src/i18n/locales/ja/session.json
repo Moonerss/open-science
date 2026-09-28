@@ -33,7 +33,9 @@
     "newNotebook": "新規 Notebook",
     "newMarkdown": "新規 Markdown",
     "splitRightShort": "右に分割",
-    "splitDownShort": "下に分割"
+    "splitDownShort": "下に分割",
+    "defaultProject": "デフォルト",
+    "projectMenu": "プロジェクトを切り替え"
   },
   "composer": {
     "placeholder": {
@@ -479,7 +481,8 @@
       "paste": "貼り付け",
       "selectAll": "すべて選択",
       "clear": "画面をクリア",
-      "revealCwd": "作業フォルダを表示"
+      "revealCwd": "作業フォルダを表示",
+      "resumeAgent": "前回の {{agent}} セッションを再開"
     },
     "rename": "ターミナル名を変更…",
     "confirmClose": {

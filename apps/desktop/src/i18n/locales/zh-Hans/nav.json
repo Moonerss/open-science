@@ -183,5 +183,22 @@
     "sessionLabel": "会话操作",
     "projectLabel": "项目操作",
     "exampleLabel": "示例操作"
+  },
+  "jump": {
+    "ariaLabel": "跳转",
+    "placeholder": "跳转到项目、屏幕、会话或终端…",
+    "noResults": "没有匹配项",
+    "sections": {
+      "actions": "操作",
+      "projects": "项目",
+      "screens": "屏幕",
+      "panes": "已打开的面板",
+      "sessions": "会话"
+    },
+    "actions": {
+      "newSession": "在「{{project}}」新建会话",
+      "newTerminal": "在「{{project}}」新建终端",
+      "newScreen": "在「{{project}}」新建屏幕"
+    }
   }
 }

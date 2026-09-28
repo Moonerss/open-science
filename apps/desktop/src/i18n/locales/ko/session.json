@@ -33,7 +33,9 @@
     "newNotebook": "새 Notebook",
     "newMarkdown": "새 Markdown",
     "splitRightShort": "오른쪽으로 분할",
-    "splitDownShort": "아래로 분할"
+    "splitDownShort": "아래로 분할",
+    "defaultProject": "기본",
+    "projectMenu": "프로젝트 전환"
   },
   "composer": {
     "placeholder": {
@@ -479,7 +481,8 @@
       "paste": "붙여넣기",
       "selectAll": "전체 선택",
       "clear": "화면 지우기",
-      "revealCwd": "작업 폴더 열기"
+      "revealCwd": "작업 폴더 열기",
+      "resumeAgent": "지난 {{agent}} 세션 이어서 하기"
     },
     "rename": "터미널 이름 변경…",
     "confirmClose": {

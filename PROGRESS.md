@@ -1,5 +1,7 @@
 # Progress
 
+2026-09-28 00:08 · feat(layout)+feat(terminal): 提交 9-25 起一直未入库的两块。一、Project → Screens：每个 Screen 归属一个项目，Screen 栏只显示当前项目的，左侧 ProjectSwitcher/侧栏点项目/⌘J 跳转面板（Orca 同款，非 Mac 为 Ctrl+Shift+J）切换，记住每个项目上次所在 Screen；旧 Screen 首次加载按内容归档（会话目录优先、再看终端 cwd），删项目时其 Screen 归 Default。二、终端重开回到原目录并续上 Claude Code / Codex：`terminal_probe` 每 3 秒读 shell cwd（macOS proc_pidinfo）与前台进程（Claude 读 `~/.claude/sessions/<pid>.json`，Codex 读其打开的 rollout 首行），仍在跑的重启后自动 `claude --resume` / `codex resume`，已退出的放右键菜单。审查已知小项未修：Claude 进程崩溃留下的 pid 文件若被新进程复用 pid 会误判；Codex 会话缓存按 pid。tsc、eslint、全量前端与 Rust 测试通过。
+
 2026-09-27 21:47 · feat(terminal): 终端里手动 export 的变量跨重启保留。参照 Orca（它靠 daemon 让 shell 不死，重启机器照样丢）改为 shell 自记：zsh 走 ZDOTDIR 包装、bash 走 --rcfile，先跑用户自己的 rc，每个提示符把「与 rc 结果不同」的导出变量（含 unset）写进 `terminal-env/<pane>.sh`（0700 目录），重开同一 pane 在 rc 之后 source；关 pane 删、启动时按恢复的布局清孤儿（leaf id 会复用）。真 PTY 实测 zsh/bash 3.2 往返、带空格引号的值、$? 保留、/etc/zshrc 的 HISTFILE 纠回、用户自定 ZDOTDIR、真实 oh-my-zsh rc 均正常；钩子 0.6ms/提示符。1662 前端测试、104 Rust 测试、tsc、eslint 全绿，DMG 已打，待实机验收。
 
 2026-09-27 19:26 · fix(terminal): 内置终端 shell 没有代理 env（Finder 启动的 app 不继承 shell env，`terminal_open` 从没套 `sidecar_proxy_env`），自动 resume 的 claude/codex 直连卡死不回复；实测 sidecar 有 HTTPS_PROXY、终端 zsh 为零。改为终端与 sidecar 同一份代理设置，rc 文件仍可覆盖；terminal 测试通过，DMG 已打，待实机验收。

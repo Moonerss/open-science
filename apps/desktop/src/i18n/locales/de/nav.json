@@ -185,5 +185,22 @@
     "sessionLabel": "Sitzungsaktionen",
     "projectLabel": "Projektaktionen",
     "exampleLabel": "Beispielaktionen"
+  },
+  "jump": {
+    "ariaLabel": "Springen zu",
+    "placeholder": "Zu Projekt, Screen, Sitzung oder Terminal springen…",
+    "noResults": "Keine Treffer",
+    "sections": {
+      "actions": "Aktionen",
+      "projects": "Projekte",
+      "screens": "Screens",
+      "panes": "Offene Bereiche",
+      "sessions": "Sitzungen"
+    },
+    "actions": {
+      "newSession": "Neue Sitzung in {{project}}",
+      "newTerminal": "Neues Terminal in {{project}}",
+      "newScreen": "Neuer Screen in {{project}}"
+    }
   }
 }

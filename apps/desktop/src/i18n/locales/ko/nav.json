@@ -183,5 +183,22 @@
     "sessionLabel": "세션 작업",
     "projectLabel": "프로젝트 작업",
     "exampleLabel": "예제 작업"
+  },
+  "jump": {
+    "ariaLabel": "이동",
+    "placeholder": "프로젝트, 스크린, 세션, 터미널로 이동…",
+    "noResults": "일치하는 항목 없음",
+    "sections": {
+      "actions": "작업",
+      "projects": "프로젝트",
+      "screens": "스크린",
+      "panes": "열린 패널",
+      "sessions": "세션"
+    },
+    "actions": {
+      "newSession": "'{{project}}'에서 새 세션",
+      "newTerminal": "'{{project}}'에서 새 터미널",
+      "newScreen": "'{{project}}'에서 새 스크린"
+    }
   }
 }

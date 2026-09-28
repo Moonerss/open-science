@@ -7,8 +7,18 @@ import {
   ContextMenuSeparator,
   ContextMenuSub,
 } from "@/components/ui/ContextMenu";
-import { getTerminal, markTerminalUsed, putTerminal } from "@/lib/terminalSessions";
+import {
+  getTerminal,
+  markTerminalUsed,
+  putTerminal,
+} from "@/lib/terminalSessions";
+import {
+  resumeCommand,
+  terminalStartup,
+  type TerminalAgent,
+} from "@/lib/layout";
 import { TerminalSearch } from "./TerminalSearch";
+import { isJumpChord } from "@/components/jump-palette/JumpPalette";
 
 /**
  * A real shell in a pane.
@@ -29,6 +39,7 @@ export function TerminalPane({
   leafId,
   cwd,
   command,
+  agent,
   onSplit,
   onRename,
   onClose,
@@ -37,6 +48,11 @@ export function TerminalPane({
   cwd?: string;
   /** Typed into the shell once, when this terminal is first opened. */
   command?: string;
+  /** The coding agent last seen in this terminal. Still running when the app
+   *  last looked → its session is resumed on first open, INSTEAD of `command`
+   *  (a relaunch picks the conversation back up rather than starting over).
+   *  Exited → offered from the menu. */
+  agent?: TerminalAgent;
   /** Right-click → Split. `kind` is what the NEW pane holds: another terminal,
    *  or a conversation about what this one just printed. */
   onSplit?: (dir: "row" | "col", kind: "terminal" | "session") => void;
@@ -68,15 +84,20 @@ export function TerminalPane({
     }
 
     void (async () => {
-      const [{ Terminal }, { FitAddon }, { SearchAddon }, { invoke }, { listen }] =
-        await Promise.all([
-          import("@xterm/xterm"),
-          import("@xterm/addon-fit"),
-          import("@xterm/addon-search"),
-          import("@tauri-apps/api/core"),
-          import("@tauri-apps/api/event"),
-          import("@xterm/xterm/css/xterm.css"),
-        ]);
+      const [
+        { Terminal },
+        { FitAddon },
+        { SearchAddon },
+        { invoke },
+        { listen },
+      ] = await Promise.all([
+        import("@xterm/xterm"),
+        import("@xterm/addon-fit"),
+        import("@xterm/addon-search"),
+        import("@tauri-apps/api/core"),
+        import("@tauri-apps/api/event"),
+        import("@xterm/xterm/css/xterm.css"),
+      ]);
       if (disposed) return;
 
       const container = document.createElement("div");
@@ -96,20 +117,37 @@ export function TerminalPane({
       // ⌘F / Ctrl+F belongs to the app, not to the shell: xterm would otherwise
       // pass it through and some full-screen program would act on it.
       term.attachCustomKeyEventHandler((event) => {
-        if (event.type === "keydown" && (event.metaKey || event.ctrlKey) && event.key === "f") {
+        if (
+          event.type === "keydown" &&
+          (event.metaKey || event.ctrlKey) &&
+          event.key === "f"
+        ) {
           setSearching(true);
           return false;
         }
+        // The jump palette's chord is the app's too: left to xterm, Ctrl+Shift+J
+        // would reach the shell as a line feed.
+        if (isJumpChord(event)) return false;
         return true;
       });
       term.open(container);
       fit.fit();
 
-      await invoke("terminal_open", { id: leafId, cwd, cols: term.cols, rows: term.rows });
-      const [dataEvent, exitEvent] = await invoke<[string, string]>("terminal_event_names", {
+      await invoke("terminal_open", {
         id: leafId,
+        cwd,
+        cols: term.cols,
+        rows: term.rows,
       });
-      const unlistenData = await listen<string>(dataEvent, (event) => term.write(event.payload));
+      const [dataEvent, exitEvent] = await invoke<[string, string]>(
+        "terminal_event_names",
+        {
+          id: leafId,
+        },
+      );
+      const unlistenData = await listen<string>(dataEvent, (event) =>
+        term.write(event.payload),
+      );
       const unlistenExit = await listen(exitEvent, () =>
         term.write(`\r\n${t("terminal.exited")}\r\n`),
       );
@@ -136,20 +174,30 @@ export function TerminalPane({
           queued = 0;
           // Parked, or on a Screen that is not on display: a zero box would
           // have xterm propose a nonsense grid.
-          if (!container.isConnected || !container.clientWidth || !container.clientHeight) return;
+          if (
+            !container.isConnected ||
+            !container.clientWidth ||
+            !container.clientHeight
+          )
+            return;
           fit.fit();
           if (term.cols === sent.cols && term.rows === sent.rows) return;
           sent = { cols: term.cols, rows: term.rows };
-          void invoke("terminal_resize", { id: leafId, cols: term.cols, rows: term.rows });
+          void invoke("terminal_resize", {
+            id: leafId,
+            cols: term.cols,
+            rows: term.rows,
+          });
         });
       });
       observer.observe(container);
 
       // Sent once, on the pane's FIRST open — never on a remount, which would
       // re-run it over whatever the user is doing in that shell.
-      if (command) {
+      const startup = terminalStartup({ command, agent });
+      if (startup) {
         markTerminalUsed(leafId);
-        void invoke("terminal_write", { id: leafId, data: `${command}\n` });
+        void invoke("terminal_write", { id: leafId, data: `${startup}\n` });
       }
 
       putTerminal(leafId, {
@@ -173,10 +221,11 @@ export function TerminalPane({
       disposed = true;
       getTerminal(leafId)?.container.remove();
     };
-    // `command` belongs to the pane's first open; a change to it must not
-    // rebuild a live terminal.
+    // `cwd`, `command` and `agent` belong to the pane's first open. `cwd` and
+    // `agent` are also rewritten every few seconds as the shell moves (see
+    // `recordTerminal`), and none of that may rebuild a live terminal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leafId, cwd, t]);
+  }, [leafId, t]);
 
   /** Right-click, modelled on Orca's terminal menu (`TerminalContextMenu.tsx`):
    *  the clipboard actions first, because that is what a right-click in a
@@ -222,11 +271,28 @@ export function TerminalPane({
           {t("terminal.menu.revealCwd")}
         </ContextMenuItem>
       )}
+      {/* Only once the agent has exited: typed while it runs, the command
+          would land in the agent's own prompt. */}
+      {agent && !agent.running && resumeCommand(agent) && (
+        <ContextMenuItem
+          onSelect={() => {
+            markTerminalUsed(leafId);
+            void invokeWrite(leafId, `${resumeCommand(agent)}\n`);
+            getTerminal(leafId)?.term.focus();
+          }}
+        >
+          {t("terminal.menu.resumeAgent", {
+            agent: agent.kind === "claude" ? "Claude Code" : "Codex",
+          })}
+        </ContextMenuItem>
+      )}
       <ContextMenuItem onSelect={() => setSearching(true)}>
         {t("terminal.search.find")}
       </ContextMenuItem>
       {onRename && (
-        <ContextMenuItem onSelect={onRename}>{t("terminal.rename")}</ContextMenuItem>
+        <ContextMenuItem onSelect={onRename}>
+          {t("terminal.rename")}
+        </ContextMenuItem>
       )}
       {(onSplit || onClose) && <ContextMenuSeparator />}
       {/* Split asks WHAT the new pane holds. A terminal beside a terminal is one
@@ -254,12 +320,20 @@ export function TerminalPane({
           </ContextMenuSub>
         </>
       )}
-      {onClose && <ContextMenuItem onSelect={onClose}>{t("group.closePane")}</ContextMenuItem>}
+      {onClose && (
+        <ContextMenuItem onSelect={onClose}>
+          {t("group.closePane")}
+        </ContextMenuItem>
+      )}
     </>
   );
 
   if (!isTauri) {
-    return <div className="p-4 text-[13px] text-muted">{t("terminal.desktopOnly")}</div>;
+    return (
+      <div className="p-4 text-[13px] text-muted">
+        {t("terminal.desktopOnly")}
+      </div>
+    );
   }
   return (
     <ContextMenu items={menuItems} label={t("terminal.menu.label")}>

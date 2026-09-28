@@ -66,7 +66,7 @@ import { samePath } from "./workspacePath";
 import { kernelReset } from "./kernel";
 import { moveScrollMemory } from "./scrollMemory";
 import { deriveArtifact, deriveArtifactPresentation } from "./artifacts";
-import { useLayoutStore } from "./layout";
+import { DEFAULT_PROJECT, useLayoutStore } from "./layout";
 import { provenanceInputsFromEvent, recordProvenance } from "./provenance";
 import { clearResolvedPaths } from "./artifactFile";
 import { imageAttachmentParts } from "./promptAttachments";
@@ -399,6 +399,9 @@ interface RuntimeState {
   /** Projects: named shared workspaces under `<base>/projects`. Sessions group
    *  under a project by `directory`; multiple sessions share the folder. */
   projects: ProjectInfo[];
+  /** The project list has been read at least once (it runs after the session
+   *  list), so "no project matches" can be trusted to mean Default. */
+  projectsLoaded: boolean;
   refreshProjects: () => Promise<void>;
   /** Create a project folder and move into it with a fresh pinned draft. */
   createProject: (name: string) => Promise<ProjectInfo | null>;
@@ -2522,6 +2525,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   setAgentMode: (mode, sessionId) =>
     set((s) => ({ sessionAgents: { ...s.sessionAgents, [sessionId ?? s.currentId ?? DRAFT_KEY]: mode } })),
   projects: [],
+  projectsLoaded: false,
   workspace: null,
   webWorkspace: null,
   webReadOnly: false,
@@ -3843,7 +3847,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   refreshProjects: async () => {
     if (!isTauri && !isGatewayWeb) return;
     try {
-      set({ projects: await listProjects() });
+      set({ projects: await listProjects(), projectsLoaded: true });
     } catch {
       /* ignore transient scan failures */
     }
@@ -3887,6 +3891,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   deleteProject: async (id) => {
     try {
       await deleteProjectCmd(id);
+      useLayoutStore.getState().releaseProject(id);
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -4572,7 +4577,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // Its OWN Screen with its own pane. Binding the install onto whatever pane
       // happened to be focused took over a conversation the user was in the
       // middle of — an install is a new piece of work, not a hijack.
-      useLayoutStore.getState().openInNewGroup(id, title);
+      // Filed under Default, like the session itself: an install belongs to
+      // no project.
+      useLayoutStore.getState().openInNewGroup(id, title, DEFAULT_PROJECT);
       // The turn goes through the normal send path (echo, running lock, error
       // line, stream folding) — hand-rolling the POST left the pane with no
       // message, no spinner and no way to tell a failure from a slow model.

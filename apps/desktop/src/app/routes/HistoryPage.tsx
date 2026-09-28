@@ -18,6 +18,7 @@ import type { SessionMeta } from "@ai4s/sdk";
 import { cn } from "@/lib/cn";
 import { getClient, useRuntimeStore } from "@/lib/runtime";
 import { useLayoutStore } from "@/lib/layout";
+import { sessionProject } from "@/lib/projectScope";
 import { timeAgo, timeBucket, type TimeBucket } from "@/lib/relativeTime";
 import { exportIndex, sessionToMarkdown } from "@/lib/exportSession";
 import { useIsMobile } from "@/lib/useIsMobile";
@@ -140,7 +141,8 @@ export function HistoryPage() {
   );
 
   const open = (id: string) => {
-    if (!isMobile && !isGatewayWeb) useLayoutStore.getState().openSessionEphemeral(id);
+    if (!isMobile && !isGatewayWeb)
+      useLayoutStore.getState().openSessionEphemeral(id, undefined, sessionProject(id));
     navigate(`/live/${id}`);
   };
 

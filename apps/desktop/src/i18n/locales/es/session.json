@@ -33,7 +33,9 @@
     "newNotebook": "Nuevo notebook",
     "newMarkdown": "Nuevo Markdown",
     "splitRightShort": "Dividir a la derecha",
-    "splitDownShort": "Dividir abajo"
+    "splitDownShort": "Dividir abajo",
+    "defaultProject": "Predeterminado",
+    "projectMenu": "Cambiar de proyecto"
   },
   "composer": {
     "placeholder": {
@@ -490,7 +492,8 @@
       "paste": "Pegar",
       "selectAll": "Seleccionar todo",
       "clear": "Limpiar pantalla",
-      "revealCwd": "Mostrar la carpeta de trabajo"
+      "revealCwd": "Mostrar la carpeta de trabajo",
+      "resumeAgent": "Reanudar la última sesión de {{agent}}"
     },
     "rename": "Renombrar terminal…",
     "confirmClose": {

@@ -29,6 +29,7 @@ mod plan_usage;
 mod status_bar;
 mod terminal;
 mod terminal_env;
+mod terminal_probe;
 mod tools;
 mod usage;
 #[cfg(target_os = "macos")]
@@ -239,6 +240,7 @@ pub fn run() {
             terminal::terminal_resize,
             terminal::terminal_close,
             terminal::terminal_event_names,
+            terminal::terminal_probe,
             terminal_env::terminal_env_prune,
             runs::record_run,
             runs::list_runs,

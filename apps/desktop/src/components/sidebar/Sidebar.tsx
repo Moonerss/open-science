@@ -43,7 +43,7 @@ import { overlayTitlebarStyle } from "@/lib/titlebar";
 import { visibleSections, resolveSection } from "@/components/settings/sections";
 import { useIsMobile } from "@/lib/useIsMobile";
 import { useDragDivider } from "@/lib/useDragDivider";
-import { useLayoutStore } from "@/lib/layout";
+import { DEFAULT_PROJECT, selectActiveProjectId, useLayoutStore } from "@/lib/layout";
 import { startPaneDrag } from "@/lib/dragPane";
 import { isGatewayWeb } from "@/lib/webMode";
 import { pathKey, samePath } from "@/lib/workspacePath";
@@ -65,6 +65,8 @@ interface Row {
   /** The project this session belongs to, if any. Names the Screen a click
    *  opens — "Screen 3" says nothing about what is in it. */
   project?: string;
+  /** That project's id — the project whose Screens a click opens it among. */
+  projectId?: string;
 }
 
 /** Dragging the divider below this pointer x collapses the sidebar; dragging
@@ -209,6 +211,19 @@ export function Sidebar({ project }: { project: Project }) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renamingSession, setRenamingSession] = useState<string | null>(null);
 
+  // Clicking a project shows its Screens. Clicking the project already shown
+  // folds it open or shut, as the row always did.
+  const activeProjectId = useLayoutStore(selectActiveProjectId);
+  const clickProject = (id: string) => {
+    if (isMobile || isGatewayWeb || activeProjectId === id) {
+      toggleProject(id);
+      return;
+    }
+    useLayoutStore.getState().setActiveProject(id);
+    if (collapsedProjects.includes(id)) toggleProject(id);
+    if (!location.pathname.startsWith("/live")) navigate("/live");
+  };
+
   const toggleProject = (id: string) =>
     setCollapsedProjects((prev) => {
       const next = prev.includes(id)
@@ -240,7 +255,7 @@ export function Sidebar({ project }: { project: Project }) {
   const openProjectScreen = async (p: ProjectInfo) => {
     const leafId =
       !isMobile && !isGatewayWeb
-        ? useLayoutStore.getState().openInNewGroup(null, p.name)
+        ? useLayoutStore.getState().openInNewGroup(null, p.name, p.id)
         : null;
     await startDraftInWorkspace(p.path, leafId ? draftKeyFor(leafId) : undefined);
     navigate("/live");
@@ -310,6 +325,7 @@ export function Sidebar({ project }: { project: Project }) {
     const owner = s.directory ? projectByPath.get(pathKey(s.directory)) : undefined;
     if (owner) {
       row.project = owner.name;
+      row.projectId = owner.id;
       sessionsByProject.get(owner.id)!.push(row);
     } else looseRows.push(row);
   }
@@ -469,7 +485,7 @@ export function Sidebar({ project }: { project: Project }) {
               // eslint-disable-next-line i18next/no-literal-string -- SplitDir enum, not UI copy
               layout.split("row", row.id);
             } else {
-              layout.openSessionEphemeral(row.id, row.project);
+              layout.openSessionEphemeral(row.id, row.project, row.projectId ?? DEFAULT_PROJECT);
             }
             // The layout change alone is invisible from Skills/Runs/Files/…:
             // those routes render instead of the panes, so the click looked
@@ -761,7 +777,7 @@ export function Sidebar({ project }: { project: Project }) {
           )}
           {visibleProjects.map((p) => {
             const open = !collapsedProjects.includes(p.id);
-            const active = samePath(p.path, workspace);
+            const active = !isMobile && !isGatewayWeb ? activeProjectId === p.id : samePath(p.path, workspace);
             const rows = sessionsByProject.get(p.id) ?? [];
             return (
               <div key={p.id}>
@@ -818,7 +834,7 @@ export function Sidebar({ project }: { project: Project }) {
                   >
                   <div className="group/project relative">
                     <button
-                      onClick={() => toggleProject(p.id)}
+                      onClick={() => clickProject(p.id)}
                       aria-expanded={open}
                       className="flex w-full items-center gap-1.5 rounded-input py-1 pl-1 pr-10 text-[13px] text-text hover:bg-surface-2"
                     >

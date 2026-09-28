@@ -38,10 +38,56 @@ export type PaneContent =
    *  the shell rather than exec'd in its place, so the user can see what ran,
    *  edit it, and still have a shell when it exits — which is what you want
    *  when the command is `ssh some-host`. */
-  | { kind: "terminal"; cwd?: string; name?: string; command?: string }
+  /** `cwd` follows the shell as it moves (see `recordTerminal`), so a
+   *  relaunch reopens the terminal where it was, not where it started. */
+  | { kind: "terminal"; cwd?: string; name?: string; command?: string; agent?: TerminalAgent }
   | { kind: "files"; path?: string }
   | { kind: "notebook"; path: string; root?: FileRoot }
   | { kind: "editor"; path: string; root?: FileRoot };
+
+/** The coding agent last seen running in a terminal — Claude Code or Codex —
+ *  and the session it was in. `running`: it was still the terminal's
+ *  foreground program when last looked at, i.e. the user left it open; a
+ *  relaunch then resumes it instead of leaving a bare shell. */
+export interface TerminalAgent {
+  kind: "claude" | "codex";
+  sessionId: string;
+  running: boolean;
+}
+
+/** The command that resumes `agent`'s session in a shell, or null when the
+ *  session id is not a plain id. It is read from a file on disk and typed into
+ *  a shell, so it is allowed only the characters an id has — which also makes
+ *  it safe unquoted in every shell (cmd.exe has no single quotes). */
+export function resumeCommand(agent: TerminalAgent): string | null {
+  if (!/^[A-Za-z0-9_-]+$/.test(agent.sessionId)) return null;
+  return agent.kind === "claude"
+    ? `claude --resume ${agent.sessionId}`
+    : `codex resume ${agent.sessionId}`;
+}
+
+/** What `terminal_probe` reports for one terminal (see terminal_probe.rs). */
+export interface TerminalProbe {
+  cwd: string | null;
+  agent: { kind: TerminalAgent["kind"]; sessionId: string } | null;
+}
+
+/** What a terminal types into its shell when it first opens: a still-running
+ *  agent's resume command, else the pane's own `command`. After a relaunch
+ *  that brings the conversation back instead of starting over. */
+export function terminalStartup(content: { command?: string; agent?: TerminalAgent }): string | undefined {
+  return (content.agent?.running && resumeCommand(content.agent)) || content.command;
+}
+
+function isTerminalAgent(v: unknown): v is TerminalAgent {
+  if (!v || typeof v !== "object") return false;
+  const a = v as Record<string, unknown>;
+  return (
+    (a.kind === "claude" || a.kind === "codex") &&
+    typeof a.sessionId === "string" &&
+    typeof a.running === "boolean"
+  );
+}
 
 export interface PaneLeaf {
   kind: "leaf";
@@ -314,6 +360,11 @@ function initialSessionId(): string | null {
  * A "group" (screen) is one independent free-form pane arrangement. Multiple
  * groups switch via the tab strip, like browser tab groups / iTerm windows. An
  * empty group (`tree === null`) shows the drag-a-session onboarding.
+ *
+ * Every Screen belongs to one project — Project → Screens → panes, the same
+ * shape as Orca's worktree → tab groups → tabs — and the Screen bar shows the
+ * active project's Screens only. Work filed under no project belongs to the
+ * Default project.
  */
 export interface LayoutGroup {
   id: string;
@@ -322,6 +373,29 @@ export interface LayoutGroup {
   tree: PaneNode | null;
   focusedLeafId: string | null;
   zoomedLeafId: string | null;
+  /** The owning project's id, or DEFAULT_PROJECT. Undefined only on a Screen
+   *  saved before Screens had projects: it shows under Default until
+   *  `reconcileProjects` files it by what it holds. */
+  projectId?: string;
+}
+
+/** The project of Screens whose work is filed under no project folder. */
+export const DEFAULT_PROJECT = "";
+
+export function projectOf(group: LayoutGroup): string {
+  return group.projectId ?? DEFAULT_PROJECT;
+}
+
+/** The active project: the project of the Screen on display. Derived, never
+ *  stored, so it cannot disagree with the Screen that is actually showing. */
+export function selectActiveProjectId(s: { groups: LayoutGroup[]; activeGroupId: string }): string {
+  const active = s.groups.find((g) => g.id === s.activeGroupId);
+  return active ? projectOf(active) : DEFAULT_PROJECT;
+}
+
+/** One project's Screens, in tab order. */
+export function projectGroups(groups: LayoutGroup[], projectId: string): LayoutGroup[] {
+  return groups.filter((g) => projectOf(g) === projectId);
 }
 
 let groupSeq = 0;
@@ -349,7 +423,8 @@ export function isPaneContent(v: unknown): v is PaneContent {
     return (
       (c.cwd === undefined || typeof c.cwd === "string") &&
       (c.name === undefined || typeof c.name === "string") &&
-      (c.command === undefined || typeof c.command === "string")
+      (c.command === undefined || typeof c.command === "string") &&
+      (c.agent === undefined || isTerminalAgent(c.agent))
     );
   }
   if (c.kind === "files") return c.path === undefined || typeof c.path === "string";
@@ -429,6 +504,7 @@ function loadPersisted(): Persisted | null {
     if (typeof p.activeGroupId !== "string") return null;
     for (const g of p.groups) {
       if (typeof g.id !== "string" || typeof g.name !== "string") return null;
+      if (g.projectId !== undefined && typeof g.projectId !== "string") delete g.projectId;
       // A pane kind that no longer exists (the browser pane was removed) must
       // cost the user that ONE pane, not every Screen they had open: strip the
       // content and keep the leaf, rather than failing the whole layout.
@@ -468,6 +544,33 @@ function persist(groups: LayoutGroup[], activeGroupId: string): void {
   }
 }
 
+function sameAgent(a: TerminalAgent | undefined, b: TerminalAgent | undefined): boolean {
+  if (!a || !b) return a === b;
+  return a.kind === b.kind && a.sessionId === b.sessionId && a.running === b.running;
+}
+
+// ---- The Screen each project was last on ----
+// Switching projects returns to where the user was in that project, across a
+// relaunch too. Kept beside the layout rather than in it: it is a pointer into
+// the layout, maintained by one subscription below instead of by every action
+// that happens to change the active Screen.
+const LAST_SCREEN_KEY = "ai4s.layout.lastScreenByProject";
+
+function loadLastScreens(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LAST_SCREEN_KEY) ?? "{}") as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter((e): e is [string, string] => typeof e[1] === "string"),
+    );
+  } catch {
+    return {};
+  }
+}
+
+const lastScreenByProject: Record<string, string> = loadLastScreens();
+
 interface LayoutState {
   /** All groups, in tab order. Always ≥1. */
   groups: LayoutGroup[];
@@ -489,24 +592,45 @@ interface LayoutState {
   /** Open `sessionId` full-screen in the tentative screen — reusing the current
    *  tentative screen if one exists, else opening a new one. The sidebar-click
    *  entry (#3). `name` labels the screen it opens (the session's project), so
-   *  the tab strip says where the work is rather than "Screen 3". */
-  openSessionEphemeral: (sessionId: string, name?: string) => void;
+   *  the tab strip says where the work is rather than "Screen 3". `projectId`
+   *  is the session's project (default: the active one); the Screen lands
+   *  there, so opening a session also shows its project. */
+  openSessionEphemeral: (sessionId: string, name?: string, projectId?: string) => void;
   /** Pin the tentative screen (clear `ephemeralGroupId`) — called by any real
    *  interaction with it. No-op when there is none. */
   pinEphemeral: () => void;
-  /** Add a new empty group and activate it; returns its id. */
-  /** A new Screen. With `content`, it opens holding that surface — the Screen
-   *  bar's own "+" makes Screens, so a terminal asked for there arrives as one
-   *  rather than splitting the layout the user was looking at. */
+  /** A new Screen in the active project. With `content`, it opens holding that
+   *  surface — the Screen bar's own "+" makes Screens, so a terminal asked for
+   *  there arrives as one rather than splitting the layout the user was
+   *  looking at. */
   addGroup: (content?: PaneContent) => string;
+  /** Show a project: the Screen it was last on, else its first, else a new
+   *  empty one — a project is never shown with no Screen at all. */
+  setActiveProject: (projectId: string) => void;
+  /** File Screens under projects by what they hold (`resolve`): Screens saved
+   *  before Screens had projects — and, with `orphans`, Screens whose project
+   *  is not in `valid`. Orphans are judged only when the caller knows the list
+   *  is complete (the first load after launch): a project created a moment ago
+   *  can be missing from a list that is still being refreshed, and its new
+   *  Screen must not be swept into Default for that. */
+  reconcileProjects: (valid: Set<string>, resolve: (group: LayoutGroup) => string, orphans: boolean) => void;
+  /** A project was removed: its Screens — and the work in them — move to
+   *  Default rather than vanishing with it. */
+  releaseProject: (projectId: string) => void;
+  /** Record what a terminal pane is doing now — its shell's directory and the
+   *  coding agent in its foreground (null: none) — so a relaunch reopens it
+   *  there and resumes that agent. An agent that has exited is kept, marked not
+   *  running: it is still the terminal's LAST session, offered from its menu. */
+  recordTerminal: (leafId: string, probe: TerminalProbe) => void;
   /** Open ONE new pane in its own Screen — bound to `sessionId`, or a draft when
    *  null — activate and focus it, optionally naming the Screen. Every "new
    *  session" entry point goes through this: binding the new work onto the
    *  focused pane took over whatever conversation the user had there. An empty
    *  active Screen is filled instead of stacking a second empty one beside it.
    *  Returns the new leaf's id. */
-  openInNewGroup: (sessionId: string | null, name?: string) => string;
-  /** Close a group; never drops below one (the last group is emptied instead). */
+  openInNewGroup: (sessionId: string | null, name?: string, projectId?: string) => string;
+  /** Close a group; a project never drops below one Screen (its last Screen is
+   *  emptied instead). */
   closeGroup: (groupId: string) => void;
   renameGroup: (groupId: string, name: string) => void;
   setActiveGroup: (groupId: string) => void;
@@ -619,8 +743,9 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
     zoomedLeafId: null,
     ephemeralGroupId: null,
 
-    openSessionEphemeral: (sessionId, name = "") =>
+    openSessionEphemeral: (sessionId, name = "", projectId) =>
       set((s) => {
+        const project = projectId ?? selectActiveProjectId(s);
         // Already on screen somewhere? Go there — clicking a session in the
         // sidebar means "show me this conversation", and building a second
         // screen for one already open split the user's attention across two
@@ -653,10 +778,12 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
         const leaf = makeLeaf(sessionId);
         if (reusable) {
           // Reuse the tentative screen: swap its single pane's session, stay
-          // tentative. This is the ONE path that keeps ephemeralGroupId.
+          // tentative. This is the ONE path that keeps ephemeralGroupId. A
+          // preview of a session in another project moves with it — a preview
+          // left behind in the old project is exactly the pile-up #78 was.
           const groups = s.groups.map((g) =>
             g.id === reusable
-              ? { ...g, name, tree: leaf, focusedLeafId: leaf.id, zoomedLeafId: null }
+              ? { ...g, name, projectId: project, tree: leaf, focusedLeafId: leaf.id, zoomedLeafId: null }
               : g,
           );
           persist(groups, reusable);
@@ -670,7 +797,14 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
           };
         }
         // Open a fresh tentative screen.
-        const g: LayoutGroup = { id: genGroupId(), name, tree: leaf, focusedLeafId: leaf.id, zoomedLeafId: null };
+        const g: LayoutGroup = {
+          id: genGroupId(),
+          name,
+          projectId: project,
+          tree: leaf,
+          focusedLeafId: leaf.id,
+          zoomedLeafId: null,
+        };
         const groups = [...s.groups, g];
         persist(groups, g.id);
         return {
@@ -689,6 +823,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
       const g: LayoutGroup = {
         id: genGroupId(),
         name: "",
+        projectId: selectActiveProjectId(get()),
         tree: leaf,
         focusedLeafId: leaf?.id ?? null,
         zoomedLeafId: null,
@@ -706,16 +841,24 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
       return g.id;
     },
 
-    openInNewGroup: (sessionId, name) => {
+    openInNewGroup: (sessionId, name, projectId) => {
       const leaf = makeLeaf(sessionId);
       set((s) => {
+        const project = projectId ?? selectActiveProjectId(s);
         const active = { tree: leaf, focusedLeafId: leaf.id, zoomedLeafId: null };
-        // An empty active Screen (onboarding, or every pane closed) is where the
-        // new pane belongs — a second empty Screen beside it would be noise.
-        const groups = s.tree
-          ? [...s.groups, { id: genGroupId(), name: name ?? "", ...active }]
-          : s.groups.map((g) => (g.id === s.activeGroupId ? { ...g, ...(name ? { name } : {}), ...active } : g));
-        const activeGroupId = s.tree ? groups[groups.length - 1].id : s.activeGroupId;
+        // An empty Screen of that project (onboarding, or every pane closed) is
+        // where the new pane belongs — a second empty Screen beside it would be
+        // noise. The active one first, else any.
+        const empty =
+          (!s.tree && selectActiveProjectId(s) === project
+            ? s.groups.find((g) => g.id === s.activeGroupId)
+            : undefined) ?? projectGroups(s.groups, project).find((g) => !g.tree);
+        const groups = empty
+          ? s.groups.map((g) =>
+              g.id === empty.id ? { ...g, projectId: project, ...(name ? { name } : {}), ...active } : g,
+            )
+          : [...s.groups, { id: genGroupId(), name: name ?? "", projectId: project, ...active }];
+        const activeGroupId = empty ? empty.id : groups[groups.length - 1].id;
         persist(groups, activeGroupId);
         // New work pins the tentative screen: the next sidebar click opens its
         // own preview screen instead of swapping this pane out.
@@ -727,17 +870,32 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
     closeGroup: (groupId) => {
       set((s) => {
         const ephemeralGroupId = s.ephemeralGroupId === groupId ? null : s.ephemeralGroupId;
-        if (s.groups.length <= 1) {
-          // Never zero groups — empty the sole group instead of removing it.
-          const only: LayoutGroup = { ...s.groups[0], tree: null, focusedLeafId: null, zoomedLeafId: null };
-          return { groups: [only], activeGroupId: only.id, tree: null, focusedLeafId: null, zoomedLeafId: null, ephemeralGroupId };
+        const closing = s.groups.find((g) => g.id === groupId);
+        if (!closing) return {};
+        const siblings = projectGroups(s.groups, projectOf(closing));
+        if (siblings.length <= 1) {
+          // A project never has zero Screens — empty its last one instead.
+          const groups = s.groups.map((g) =>
+            g.id === groupId ? { ...g, tree: null, focusedLeafId: null, zoomedLeafId: null } : g,
+          );
+          const active = groups.find((g) => g.id === s.activeGroupId)!;
+          return {
+            groups,
+            tree: active.tree,
+            focusedLeafId: active.focusedLeafId,
+            zoomedLeafId: active.zoomedLeafId,
+            ephemeralGroupId,
+          };
         }
-        const idx = s.groups.findIndex((g) => g.id === groupId);
-        if (idx < 0) return {};
+        const idx = siblings.findIndex((g) => g.id === groupId);
         const groups = s.groups.filter((g) => g.id !== groupId);
-        // If the active group closed, activate its neighbor.
+        // If the active group closed, activate its neighbor IN THE SAME
+        // project — closing a Screen must not hop to another project.
+        const remaining = siblings.filter((g) => g.id !== groupId);
         const active =
-          s.activeGroupId === groupId ? groups[Math.min(idx, groups.length - 1)] : groups.find((g) => g.id === s.activeGroupId)!;
+          s.activeGroupId === groupId
+            ? remaining[Math.min(idx, remaining.length - 1)]
+            : groups.find((g) => g.id === s.activeGroupId)!;
         return {
           groups,
           activeGroupId: active.id,
@@ -765,6 +923,79 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
         // work in the pane pins it, via pinEphemeral.
         persist(s.groups, groupId);
         return { activeGroupId: groupId, tree: g.tree, focusedLeafId: g.focusedLeafId, zoomedLeafId: g.zoomedLeafId };
+      }),
+
+    setActiveProject: (projectId) =>
+      set((s) => {
+        if (selectActiveProjectId(s) === projectId) return {};
+        const mine = projectGroups(s.groups, projectId);
+        let target = mine.find((g) => g.id === lastScreenByProject[projectId]) ?? mine[0];
+        let groups = s.groups;
+        if (!target) {
+          target = { id: genGroupId(), name: "", projectId, tree: null, focusedLeafId: null, zoomedLeafId: null };
+          groups = [...groups, target];
+        }
+        persist(groups, target.id);
+        return {
+          groups,
+          activeGroupId: target.id,
+          tree: target.tree,
+          focusedLeafId: target.focusedLeafId,
+          zoomedLeafId: target.zoomedLeafId,
+        };
+      }),
+
+    reconcileProjects: (valid, resolve, orphans) =>
+      set((s) => {
+        let changed = false;
+        const groups = s.groups.map((g) => {
+          const stale =
+            g.projectId === undefined ||
+            (orphans && g.projectId !== DEFAULT_PROJECT && !valid.has(g.projectId));
+          if (!stale) return g;
+          const projectId = resolve(g);
+          const next = valid.has(projectId) ? projectId : DEFAULT_PROJECT;
+          if (next === g.projectId) return g;
+          changed = true;
+          return { ...g, projectId: next };
+        });
+        if (!changed) return {};
+        persist(groups, s.activeGroupId);
+        return { groups };
+      }),
+
+    releaseProject: (projectId) =>
+      set((s) => {
+        if (projectId === DEFAULT_PROJECT || !s.groups.some((g) => g.projectId === projectId)) return {};
+        const groups = s.groups.map((g) => (g.projectId === projectId ? { ...g, projectId: DEFAULT_PROJECT } : g));
+        persist(groups, s.activeGroupId);
+        return { groups };
+      }),
+
+    recordTerminal: (leafId, probe) =>
+      set((s) => {
+        const owner = s.groups.find((g) => g.tree && findLeaf(g.tree, leafId));
+        const leaf = owner?.tree ? findLeaf(owner.tree, leafId) : null;
+        if (!owner || leaf?.content?.kind !== "terminal") return {};
+        const content = leaf.content;
+        const cwd = probe.cwd ?? content.cwd;
+        const agent: TerminalAgent | undefined = probe.agent
+          ? { ...probe.agent, running: true }
+          : content.agent && { ...content.agent, running: false };
+        // Polled every few seconds: commit — and re-render, and persist — only
+        // when something actually moved.
+        if (cwd === content.cwd && sameAgent(agent, content.agent)) return {};
+        const next: PaneContent = { ...content, cwd, agent };
+        const swap = (node: PaneNode): PaneNode =>
+          node.kind === "leaf"
+            ? node.id === leafId
+              ? { ...node, content: next }
+              : node
+            : { ...node, children: node.children.map(swap) };
+        const groups = s.groups.map((g) => (g.id === owner.id ? { ...g, tree: swap(g.tree!) } : g));
+        const active = groups.find((g) => g.id === s.activeGroupId)!;
+        persist(groups, s.activeGroupId);
+        return { groups, tree: active.tree };
       }),
 
     split: (dir, sessionId) => {
@@ -856,9 +1087,14 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
         const presented = makeArtifactLeaf(sessionId, artifact);
         const edge: DockEdge = placement === "bottom" ? "bottom" : "right";
         const tree = insertLeaf(conversation, conversation.id, edge, presented);
+        // The Screen joins the project the conversation is shown in.
+        const home = get().groups.find(
+          (g) => g.tree && leaves(g.tree).some((l) => l.sessionId === sessionId && !l.artifact),
+        );
         const group: LayoutGroup = {
           id: genGroupId(),
           name: artifact.presentation?.title ?? artifact.filename,
+          projectId: home ? projectOf(home) : selectActiveProjectId(get()),
           tree,
           focusedLeafId: presented.id,
           zoomedLeafId: null,
@@ -1108,3 +1344,16 @@ export function groupContent(group: LayoutGroup): PaneContent | null {
   if (!group.tree) return null;
   return leaves(group.tree).find((leaf) => leaf.content)?.content ?? null;
 }
+
+// Remember, per project, the Screen on display — see LAST_SCREEN_KEY.
+useLayoutStore.subscribe((s) => {
+  const project = selectActiveProjectId(s);
+  if (lastScreenByProject[project] === s.activeGroupId) return;
+  lastScreenByProject[project] = s.activeGroupId;
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LAST_SCREEN_KEY, JSON.stringify(lastScreenByProject));
+  } catch {
+    /* storage full/unavailable: switching projects falls back to the first Screen */
+  }
+});

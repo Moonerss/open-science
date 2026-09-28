@@ -33,7 +33,9 @@
     "newNotebook": "新建 Notebook",
     "newMarkdown": "新建 Markdown",
     "splitRightShort": "向右分屏",
-    "splitDownShort": "向下分屏"
+    "splitDownShort": "向下分屏",
+    "defaultProject": "默认",
+    "projectMenu": "切换项目"
   },
   "composer": {
     "placeholder": {
@@ -479,7 +481,8 @@
       "paste": "粘贴",
       "selectAll": "全选",
       "clear": "清屏",
-      "revealCwd": "在访达中显示工作目录"
+      "revealCwd": "在访达中显示工作目录",
+      "resumeAgent": "恢复上次的 {{agent}} 会话"
     },
     "rename": "重命名终端…",
     "confirmClose": {

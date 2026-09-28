@@ -12,6 +12,7 @@
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
+import type { TerminalProbe } from "./layout";
 
 interface LiveTerminal {
   term: Terminal;
@@ -50,6 +51,36 @@ export function getTerminal(leafId: string): LiveTerminal | undefined {
 
 export function putTerminal(leafId: string, terminal: LiveTerminal): void {
   live.set(leafId, terminal);
+  ensureTerminalProbe();
+}
+
+/** How often the layout re-reads what each terminal is doing. Slow enough to
+ *  cost nothing (a few file reads per terminal), fast enough that quitting
+ *  right after `cd` or starting `claude` still records it. */
+const PROBE_INTERVAL_MS = 3000;
+let probing = false;
+
+/** Start following every live terminal's folder and coding agent into the
+ *  layout (`recordTerminal`). Once per app, from the first terminal on. */
+function ensureTerminalProbe(): void {
+  if (probing || typeof window === "undefined") return;
+  probing = true;
+  window.setInterval(() => void probeOnce(), PROBE_INTERVAL_MS);
+}
+
+async function probeOnce(): Promise<void> {
+  if (live.size === 0) return;
+  try {
+    const [{ invoke }, { useLayoutStore }] = await Promise.all([
+      import("@tauri-apps/api/core"),
+      import("./layout"),
+    ]);
+    const report = await invoke<Record<string, TerminalProbe>>("terminal_probe");
+    const { recordTerminal } = useLayoutStore.getState();
+    for (const [leafId, probe] of Object.entries(report)) recordTerminal(leafId, probe);
+  } catch {
+    // A missed look is harmless: the next one is three seconds away.
+  }
 }
 
 /** Every terminal currently alive, for the layout to compare against. */

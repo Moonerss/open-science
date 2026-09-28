@@ -166,6 +166,42 @@ pub fn terminal_open(
     Ok(())
 }
 
+/// What every live terminal is doing: its shell's folder and the coding agent
+/// running in it (see `terminal_probe.rs`). Polled by the layout every few
+/// seconds so a relaunch can reopen each terminal where it was.
+///
+/// The pids are read under the lock and probed outside it: probing reads files
+/// (and on macOS may run `lsof` once per Codex process), and keystrokes must not
+/// wait behind that.
+#[tauri::command(async)]
+pub fn terminal_probe(app: AppHandle) -> HashMap<String, crate::terminal_probe::TerminalProbe> {
+    let state = app.state::<TerminalState>();
+    let targets: Vec<(String, Option<u32>, Option<u32>)> = match state.0.lock() {
+        Ok(map) => map
+            .iter()
+            .map(|(id, term)| (id.clone(), term.child.process_id(), foreground_of(term)))
+            .collect(),
+        Err(_) => return HashMap::new(),
+    };
+    targets
+        .into_iter()
+        .map(|(id, shell, fg)| (id, crate::terminal_probe::probe(shell, fg)))
+        .collect()
+}
+
+#[cfg(unix)]
+fn foreground_of(term: &Terminal) -> Option<u32> {
+    term.master
+        .process_group_leader()
+        .filter(|p| *p > 0)
+        .map(|p| p as u32)
+}
+
+#[cfg(not(unix))]
+fn foreground_of(_term: &Terminal) -> Option<u32> {
+    None
+}
+
 /// Keystrokes, paste, anything the pane types.
 #[tauri::command]
 pub fn terminal_write(app: AppHandle, id: String, data: String) -> Result<(), String> {

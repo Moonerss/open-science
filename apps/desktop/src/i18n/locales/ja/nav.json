@@ -183,5 +183,22 @@
     "sessionLabel": "セッションの操作",
     "projectLabel": "プロジェクトの操作",
     "exampleLabel": "サンプルの操作"
+  },
+  "jump": {
+    "ariaLabel": "ジャンプ",
+    "placeholder": "プロジェクト・スクリーン・セッション・ターミナルへジャンプ…",
+    "noResults": "一致するものがありません",
+    "sections": {
+      "actions": "操作",
+      "projects": "プロジェクト",
+      "screens": "スクリーン",
+      "panes": "開いているペイン",
+      "sessions": "セッション"
+    },
+    "actions": {
+      "newSession": "「{{project}}」で新しいセッション",
+      "newTerminal": "「{{project}}」で新しいターミナル",
+      "newScreen": "「{{project}}」で新しいスクリーン"
+    }
   }
 }

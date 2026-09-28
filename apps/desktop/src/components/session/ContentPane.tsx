@@ -102,6 +102,7 @@ export function ContentPane({
               leafId={leafId}
               cwd={content.cwd}
               command={content.command}
+              agent={content.agent}
               // Splitting from the terminal's own menu puts the new pane BESIDE
               // it — the pane-level gesture, as opposed to the Screen bar's "+",
               // which makes a whole new Screen. What the new pane HOLDS is the
