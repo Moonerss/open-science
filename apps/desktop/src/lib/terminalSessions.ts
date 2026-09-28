@@ -84,6 +84,22 @@ async function closePty(leafId: string): Promise<void> {
 }
 
 /**
+ * Drop the saved exports (see terminal_env.rs) of panes that no longer exist.
+ *
+ * Once, at startup, with the restored layout: leaf ids are reused once the
+ * highest one is gone, so a leftover record would otherwise be sourced into an
+ * unrelated new pane. Later is too late — that new pane is then "open".
+ */
+export async function pruneTerminalEnv(openLeafIds: string[]): Promise<void> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("terminal_env_prune", { open: openLeafIds });
+  } catch {
+    // Not the desktop app, or nothing to prune: a leftover only costs a file.
+  }
+}
+
+/**
  * Kill the terminals whose panes no longer exist.
  *
  * The layout is the authority on what is open: a leaf that has left every

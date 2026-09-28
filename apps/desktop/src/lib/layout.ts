@@ -574,6 +574,8 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
     : [{ id: genGroupId(), name: "", tree: root, focusedLeafId: root!.id, zoomedLeafId: null }];
   const initActiveId = restored ? restored.activeGroupId : initGroups[0].id;
   const initActive = initGroups.find((g) => g.id === initActiveId)!;
+  const restoredLeafIds = initGroups.flatMap((g) => (g.tree ? leaves(g.tree).map((l) => l.id) : []));
+  void import("./terminalSessions").then(({ pruneTerminalEnv }) => pruneTerminalEnv(restoredLeafIds));
 
   /** Write a patch into the ACTIVE group and re-mirror the top-level fields. */
   const commitActive = (patch: Partial<Omit<LayoutGroup, "id" | "name">>) =>

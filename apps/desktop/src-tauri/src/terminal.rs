@@ -102,13 +102,24 @@ pub fn terminal_open(
         })
         .map_err(|e| e.to_string())?;
 
-    let mut command = CommandBuilder::new(default_shell());
+    let shell = default_shell();
+    let mut command = CommandBuilder::new(&shell);
     if let Some(dir) = cwd.filter(|d| std::path::Path::new(d).is_dir()) {
         command.cwd(dir);
     }
     // Tell the shell what it is talking to, or curses programs assume the
     // dumbest possible terminal and render as if formatting did not exist.
     command.env("TERM", "xterm-256color");
+    // The app's proxy setting, same as the sidecar gets. Launched from Finder
+    // the app inherits no shell env, so without this a Claude Code / Codex
+    // started (or auto-resumed) here cannot reach its API behind a proxy and
+    // hangs silently. The user's rc files still run after and can override.
+    for (k, v) in crate::runtime::sidecar_proxy_env(&app) {
+        command.env(k, v);
+    }
+    // The shell restores what the user exported by hand before the app last
+    // closed, after its startup files (see terminal_env.rs).
+    crate::terminal_env::prepare(&app, &shell, &id, &mut command);
 
     let child = pair.slave.spawn_command(command).map_err(|e| e.to_string())?;
     // The slave handle must be dropped or the master never sees EOF when the
@@ -197,6 +208,7 @@ pub fn terminal_close(app: AppHandle, id: String) -> Result<(), String> {
         let _ = terminal.child.kill();
         let _ = terminal.child.wait();
     }
+    crate::terminal_env::forget(&app, &id);
     Ok(())
 }
 
