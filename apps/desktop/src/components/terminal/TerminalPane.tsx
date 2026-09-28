@@ -88,12 +88,16 @@ export function TerminalPane({
         { Terminal },
         { FitAddon },
         { SearchAddon },
+        { Unicode11Addon },
+        { WebglAddon },
         { invoke },
         { listen },
       ] = await Promise.all([
         import("@xterm/xterm"),
         import("@xterm/addon-fit"),
         import("@xterm/addon-search"),
+        import("@xterm/addon-unicode11"),
+        import("@xterm/addon-webgl"),
         import("@tauri-apps/api/core"),
         import("@tauri-apps/api/event"),
         import("@xterm/xterm/css/xterm.css"),
@@ -114,6 +118,12 @@ export function TerminalPane({
       const search = new SearchAddon();
       term.loadAddon(fit);
       term.loadAddon(search);
+      // xterm's default width table is Unicode 6, where emoji and many symbols
+      // are one cell; Claude Code and Codex lay out with current Unicode, where
+      // they are two. Every such glyph would shift the rest of its line by one.
+      // Set before the first write: widths are fixed as text enters the buffer.
+      term.loadAddon(new Unicode11Addon());
+      term.unicode.activeVersion = "11";
       // ⌘F / Ctrl+F belongs to the app, not to the shell: xterm would otherwise
       // pass it through and some full-screen program would act on it.
       term.attachCustomKeyEventHandler((event) => {
@@ -131,6 +141,17 @@ export function TerminalPane({
         return true;
       });
       term.open(container);
+      // GPU renderer, as in VS Code and Orca: box-drawing and block characters
+      // are drawn as exact cell-sized shapes instead of font glyphs, so rules
+      // and borders join up as in a native terminal. Without WebGL, or once
+      // the GPU drops the context, xterm falls back to its DOM renderer.
+      try {
+        const webgl = new WebglAddon();
+        webgl.onContextLoss(() => webgl.dispose());
+        term.loadAddon(webgl);
+      } catch {
+        // No WebGL here; the DOM renderer is already in place.
+      }
       fit.fit();
 
       await invoke("terminal_open", {

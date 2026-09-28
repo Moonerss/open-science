@@ -110,6 +110,13 @@ pub fn terminal_open(
     // Tell the shell what it is talking to, or curses programs assume the
     // dumbest possible terminal and render as if formatting did not exist.
     command.env("TERM", "xterm-256color");
+    command.env("COLORTERM", "truecolor");
+    // Launched from Finder the app has no LANG, so the shell would start in the
+    // C locale: zsh then echoes typed CJK as escapes and counts its bytes as
+    // columns. The user's rc files still run after and can override.
+    if std::env::var_os("LANG").is_none() {
+        command.env("LANG", "en_US.UTF-8");
+    }
     // The app's proxy setting, same as the sidecar gets. Launched from Finder
     // the app inherits no shell env, so without this a Claude Code / Codex
     // started (or auto-resumed) here cannot reach its API behind a proxy and
@@ -133,14 +140,20 @@ pub fn terminal_open(
     let reader_id = id.clone();
     std::thread::spawn(move || {
         let mut buffer = [0u8; 8192];
+        // Bytes of a character the last read cut in half. Decoding each read on
+        // its own turned every split `─` into three `�`, three cells where the
+        // program had counted one; a TUI that redraws with relative cursor moves
+        // (Claude Code, Codex) then drew its rules over its own text.
+        let mut pending: Vec<u8> = Vec::new();
         loop {
             match reader.read(&mut buffer) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
-                    // Lossy on purpose: a shell can split a UTF-8 sequence across
-                    // reads, and a dropped replacement character is a better
-                    // outcome than a terminal that stops on a partial glyph.
-                    let chunk = String::from_utf8_lossy(&buffer[..n]).to_string();
+                    pending.extend_from_slice(&buffer[..n]);
+                    let chunk = take_utf8(&mut pending);
+                    if chunk.is_empty() {
+                        continue;
+                    }
                     if reader_app.emit(&output_event(&reader_id), chunk).is_err() {
                         break; // The window is gone; so is the reason to read.
                     }
@@ -258,6 +271,36 @@ pub fn close_all(state: &TerminalState) {
     }
 }
 
+/// Decode everything in `pending` except a trailing, still-incomplete UTF-8
+/// sequence, which stays behind for the next read to finish. Bytes that are
+/// invalid in themselves are still replaced (lossy), so a program printing
+/// binary cannot stall the terminal.
+fn take_utf8(pending: &mut Vec<u8>) -> String {
+    let split = pending.len() - incomplete_tail(pending);
+    let text = String::from_utf8_lossy(&pending[..split]).into_owned();
+    pending.drain(..split);
+    text
+}
+
+/// Length of a UTF-8 sequence cut off at the end of `bytes`: its lead byte
+/// promises more continuation bytes than follow it. 0 when the end is whole.
+fn incomplete_tail(bytes: &[u8]) -> usize {
+    for back in 1..=bytes.len().min(4) {
+        let byte = bytes[bytes.len() - back];
+        if byte & 0xC0 == 0x80 {
+            continue; // a continuation byte; the lead is further back
+        }
+        let need = match byte {
+            0xC0..=0xDF => 2,
+            0xE0..=0xEF => 3,
+            0xF0..=0xF7 => 4,
+            _ => 1,
+        };
+        return if need > back { back } else { 0 };
+    }
+    0
+}
+
 /// Shared so the frontend and this module cannot drift on the event names.
 #[tauri::command]
 pub fn terminal_event_names(id: String) -> (String, String) {
@@ -274,6 +317,39 @@ mod tests {
         assert_eq!(output_event("p1"), "terminal://p1/data");
         assert_eq!(exit_event("p1"), "terminal://p1/exit");
         assert_ne!(output_event("p1"), output_event("p2"));
+    }
+
+    #[test]
+    fn a_character_split_across_reads_arrives_whole() {
+        // `─` is E2 94 80. Cut after its first byte, it must not become `�`.
+        let rule = "a─b".as_bytes();
+        let mut pending = rule[..2].to_vec();
+        assert_eq!(take_utf8(&mut pending), "a");
+        assert_eq!(pending, vec![0xE2]);
+        pending.extend_from_slice(&rule[2..]);
+        assert_eq!(take_utf8(&mut pending), "─b");
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn every_split_point_of_wide_text_decodes_losslessly() {
+        let text = "设计 ⏺ 🧪 ─│ ok";
+        let bytes = text.as_bytes();
+        for cut in 0..=bytes.len() {
+            let mut pending = bytes[..cut].to_vec();
+            let mut out = take_utf8(&mut pending);
+            pending.extend_from_slice(&bytes[cut..]);
+            out += &take_utf8(&mut pending);
+            assert_eq!(out, text, "cut at {cut}");
+        }
+    }
+
+    #[test]
+    fn invalid_bytes_do_not_stall_the_terminal() {
+        // A stray continuation byte is garbage, not the start of something.
+        let mut pending = vec![b'a', 0x80, b'b'];
+        assert_eq!(take_utf8(&mut pending), "a\u{FFFD}b");
+        assert!(pending.is_empty());
     }
 
     #[test]
