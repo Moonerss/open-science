@@ -23,7 +23,7 @@ import type { RunArtifact, RunRecord } from "@ai4s/shared";
 import { queryRuns, readRunLog, reproduceRunPrompt, type RunFacet, type RunPage } from "@/lib/runs";
 import { openArtifactExternally } from "@/lib/artifactFile";
 import { copyText } from "@/lib/clipboard";
-import { PANE_HEADER, PaneTitlebarInset } from "@/components/inspector/RightPane";
+import { PANE_HEADER, PaneTitlebarInset, PANE_ICON_BUTTON } from "@/components/inspector/RightPane";
 import { useUiStore } from "@/lib/store";
 import { cn } from "@/lib/cn";
 import i18n from "@/i18n";
@@ -302,13 +302,13 @@ export function RunsPane({
           `compactHeader` note in SessionView: two misaligned windows. */}
       <div className={PANE_HEADER}>
         <PaneTitlebarInset />
-        <FlaskConical size={14} strokeWidth={1.5} className="shrink-0 text-text" />
+        <FlaskConical size={13} strokeWidth={1.5} className="shrink-0 text-muted" />
         <span className="text-sm font-medium text-text">{t("title")}</span>
         <span className="text-xs text-muted">{t("pane.subtitle")}</span>
         <div className="flex-1" />
         {controls}
-        <button className="text-text hover:opacity-60" aria-label={t("pane.closeAria")} onClick={onClose}>
-          <X size={14} strokeWidth={1.5} />
+        <button className={PANE_ICON_BUTTON} aria-label={t("pane.closeAria")} onClick={onClose}>
+          <X size={13} strokeWidth={1.5} />
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">

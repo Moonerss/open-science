@@ -3,7 +3,7 @@ import { ChevronDown, CornerDownLeft, NotebookPen, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { NotebookCell, NotebookInspector as NotebookInspectorT } from "@ai4s/shared";
 import { CodeViewer } from "@/components/code-viewer/CodeViewer";
-import { PANE_HEADER, PaneTitlebarInset } from "./RightPane";
+import { PANE_HEADER, PaneTitlebarInset, PANE_ICON_BUTTON } from "./RightPane";
 import { formatExecResult, kernelExecute } from "@/lib/kernel";
 import { useScrollMemory } from "@/lib/scrollMemory";
 import { useWheelChain } from "@/lib/wheelChain";
@@ -70,12 +70,12 @@ export function NotebookInspector({
     <div className="flex h-full flex-col">
       <header className={PANE_HEADER}>
         <PaneTitlebarInset />
-        <NotebookPen size={14} strokeWidth={1.5} className="text-text" />
+        <NotebookPen size={13} strokeWidth={1.5} className="text-muted" />
         <span className="text-sm font-medium text-text">{t("notebook.title")}</span>
         <div className="flex-1" />
         {controls}
-        <button className="text-text hover:opacity-60" aria-label={t("shell.closeInspector")} onClick={onClose}>
-          <X size={14} strokeWidth={1.5} />
+        <button className={PANE_ICON_BUTTON} aria-label={t("shell.closeInspector")} onClick={onClose}>
+          <X size={13} strokeWidth={1.5} />
         </button>
       </header>
 

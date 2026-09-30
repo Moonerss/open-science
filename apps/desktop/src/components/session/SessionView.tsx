@@ -59,7 +59,7 @@ import {
 import { InlineName } from "@/components/ui/InlineName";
 import { InteractionPrompt } from "@/components/thread/InteractionPrompt";
 import { InspectorShell } from "@/components/inspector/InspectorShell";
-import { MaximizePaneButton, RightPane } from "@/components/inspector/RightPane";
+import { MaximizePaneButton, PaneHeaderClearsLights, RightPane } from "@/components/inspector/RightPane";
 import { SessionFilesPane } from "@/app/routes/FilesPage";
 import { RunsPane } from "@/app/routes/RunsPage";
 import { cn } from "@/lib/cn";
@@ -676,7 +676,11 @@ export function SessionView({
           className={cn(
             // `select-none`: this row is chrome (title, zoom, panel toggles) —
             // dragging across it used to leave stray highlight behind.
-            "flex shrink-0 select-none items-center border-faint",
+            // A panel filling a tiled pane covers this row too: its own header
+            // takes the place, and its × brings the conversation back. Hidden,
+            // not unmounted — the width observer stays on this element.
+            inspectorFillsPane ? "hidden" : "flex",
+            "shrink-0 select-none items-center border-faint",
             // Solo keeps the roomier horizontal rhythm; the HEIGHT is the same
             // 32px either way. A 48px header under the 48px Screen strip spent
             // 96px of every window on chrome before a single message.
@@ -940,10 +944,14 @@ export function SessionView({
         </div>
 
         {inspectorFillsPane ? (
-          // Tiled pane: the inspector fills the pane (chat/composer hidden), so a
-          // narrow pane isn't squeezed and nothing overflows. Its own header's
-          // close (and the pressed folder/runs toggle) returns to the chat.
-          <div className="min-h-0 flex-1 overflow-hidden">{inspectorNode}</div>
+          // Tiled pane: the inspector fills the pane (chat, composer AND the
+          // conversation header hidden), so a narrow pane isn't squeezed and
+          // there is one header, not two stacked. Its × returns to the chat.
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <PaneHeaderClearsLights.Provider value={sidebarCollapsed && asTitlebar}>
+              {inspectorNode}
+            </PaneHeaderClearsLights.Provider>
+          </div>
         ) : (
           <>
         {finding && (

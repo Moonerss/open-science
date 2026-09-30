@@ -51,7 +51,7 @@ import { useScrollMemory } from "@/lib/scrollMemory";
 import { useWheelChain } from "@/lib/wheelChain";
 import { cn } from "@/lib/cn";
 import { samePath } from "@/lib/workspacePath";
-import { PaneTitlebarInset } from "./RightPane";
+import { PaneTitlebarInset, PANE_ICON_BUTTON, PANE_ICON_BUTTON_ON } from "./RightPane";
 
 /**
  * Right-pane preview for any workspace file. Strategy (no format conversion):
@@ -345,14 +345,14 @@ export function FilePreviewInspector({
             : // Tiled pane and right-hand inspector are both 32px: a pane beside
               // a conversation has to line up with that conversation's header.
               // See `PANE_HEADER`.
-              cn("h-8 gap-1.5 px-2.5", compactHeader ? "border-faint" : "border-border"),
+              cn("h-8 gap-1 px-2.5", compactHeader ? "border-faint" : "border-border"),
         )}
       >
         <PaneTitlebarInset />
         <span
           onPointerDown={onTitlePointerDown}
           className={cn(
-            "truncate font-medium text-text",
+            "min-w-0 truncate font-medium text-text",
             compactHeader ? "text-[13px]" : "text-sm",
             onTitlePointerDown && "cursor-grab select-none active:cursor-grabbing",
           )}
@@ -380,6 +380,9 @@ export function FilePreviewInspector({
             </ToggleBtn>
           </div>
         )}
+        {/* Title and kind on the left; state and actions pushed right, as in
+            every other pane header. */}
+        <div className="min-w-0 flex-1" />
         {/* What the file is doing, in one word. Orca keeps this beside the path
             (`editor-content-dirty-state`); without it autosave is invisible and
             the reader cannot tell a saved file from a losing one. */}
@@ -408,12 +411,12 @@ export function FilePreviewInspector({
         )}
         {canEdit && !editing && (
           <button
-            className="shrink-0 text-text hover:opacity-60"
+            className={PANE_ICON_BUTTON}
             aria-label={t("filePreview.editAria")}
             title={t("filePreview.editTitle")}
             onClick={() => setDraft(text ?? "")}
           >
-            <Pencil size={14} strokeWidth={1.5} />
+            <Pencil size={13} strokeWidth={1.5} />
           </button>
         )}
         {/* Not while autosaving: a Save button beside a light that already says
@@ -437,27 +440,27 @@ export function FilePreviewInspector({
           </>
         )}
         <button
-          className={cn("shrink-0", showHistory ? "text-accent" : "text-text hover:opacity-60")}
+          className={cn(PANE_ICON_BUTTON, showHistory && PANE_ICON_BUTTON_ON)}
           aria-label={t("filePreview.historyAria")}
           title={t("filePreview.historyTitle")}
           aria-pressed={showHistory}
           onClick={() => setShowHistory((v) => !v)}
         >
-          <History size={14} strokeWidth={1.5} />
+          <History size={13} strokeWidth={1.5} />
         </button>
         <button
-          className="shrink-0 text-text hover:opacity-60 disabled:cursor-wait disabled:opacity-40"
+          className={cn(PANE_ICON_BUTTON, "disabled:cursor-wait")}
           aria-label={isGatewayWeb ? t("filePreview.download") : t("filePreview.openExternally")}
           title={isGatewayWeb ? t("filePreview.download") : t("filePreview.openExternallyTitle")}
           onClick={openOrDownload}
           disabled={waitingForWorkspace}
         >
-          {isGatewayWeb ? <Download size={14} strokeWidth={1.5} /> : <ExternalLink size={14} strokeWidth={1.5} />}
+          {isGatewayWeb ? <Download size={13} strokeWidth={1.5} /> : <ExternalLink size={13} strokeWidth={1.5} />}
         </button>
         {controls}
         {onClose && (
-          <button className="shrink-0 text-text hover:opacity-60" aria-label={t("shell.closeInspector")} onClick={onClose}>
-            <X size={14} strokeWidth={1.5} />
+          <button className={PANE_ICON_BUTTON} aria-label={t("shell.closeInspector")} onClick={onClose}>
+            <X size={13} strokeWidth={1.5} />
           </button>
         )}
       </header>

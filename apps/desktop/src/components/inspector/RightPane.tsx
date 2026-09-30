@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { INSPECTOR_MAX, INSPECTOR_MIN, useOverlayTitlebar, useUiStore } from "@/lib/store";
@@ -97,12 +97,27 @@ export function RightPane({
  * what the Screen strip above them uses, so the three agree.
  */
 export const PANE_HEADER =
-  "flex h-8 shrink-0 select-none items-center gap-1.5 border-b border-border px-2.5";
+  "flex h-8 shrink-0 select-none items-center gap-1 border-b border-border px-2.5";
+
+/** Every icon button in a pane header — the conversation header's own look
+ *  (13px glyph, muted until hovered, a soft hover fill), so a panel opened
+ *  beside or over a conversation carries the same controls as it. */
+export const PANE_ICON_BUTTON =
+  "flex shrink-0 items-center rounded-md p-1 text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-40";
+/** A pane-header toggle while it is on (history shown, and so on). */
+export const PANE_ICON_BUTTON_ON = "bg-surface-2 text-text";
+
+/** True when a pane header is the window's top row for another reason than
+ *  being maximized: a panel that fills a tiled pane in the window's top-left
+ *  corner, with the sidebar collapsed, stands where the conversation header
+ *  was — and that header was the one clearing the traffic lights. */
+export const PaneHeaderClearsLights = createContext(false);
 
 export function PaneTitlebarInset() {
   const inspectorMaximized = useUiStore((s) => s.inspectorMaximized);
+  const clearsLights = useContext(PaneHeaderClearsLights);
   const overlayTitlebar = useOverlayTitlebar();
-  if (!inspectorMaximized || !overlayTitlebar) return null;
+  if (!(inspectorMaximized || clearsLights) || !overlayTitlebar) return null;
   // Headers pad 16px (px-4); the lights need ~78px clear in total.
   return <div data-tauri-drag-region className="w-[62px] shrink-0 self-stretch" />;
 }
@@ -116,15 +131,15 @@ export function MaximizePaneButton() {
   const label = inspectorMaximized ? t("shell.restorePanel") : t("shell.maximizePanel");
   return (
     <button
-      className="text-text hover:opacity-60"
+      className={PANE_ICON_BUTTON}
       aria-label={label}
       title={label}
       onClick={() => setInspectorMaximized(!inspectorMaximized)}
     >
       {inspectorMaximized ? (
-        <Minimize2 size={14} strokeWidth={1.5} />
+        <Minimize2 size={13} strokeWidth={1.5} />
       ) : (
-        <Maximize2 size={14} strokeWidth={1.5} />
+        <Maximize2 size={13} strokeWidth={1.5} />
       )}
     </button>
   );

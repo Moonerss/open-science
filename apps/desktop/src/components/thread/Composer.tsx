@@ -46,12 +46,9 @@ import { useUiStore } from "@/lib/store";
 import { parkDraft, unparkDraft } from "@/lib/composerStash";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
-import { useCompactWidth } from "@/lib/useCompactWidth";
+import { useLabelsOverflow } from "@/lib/useCompactWidth";
 import { isGatewayWeb } from "@/lib/webMode";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-
-/** Composer width below which the toolbar shows icons without their labels. */
-const TOOLBAR_LABEL_MIN_PX = 440;
 
 /** A paste longer than this becomes a workspace file chip instead of raw text. */
 const PASTE_AS_FILE_CHARS = 2000;
@@ -218,7 +215,7 @@ export function Composer({
   acceptsHandoff?: boolean;
   /** This composer's pane has layout boxes. A pane in a Screen hidden without
    *  layout cannot be measured until it comes back — and one that kept its
-   *  layout must not be re-measured at all (see useCompactWidth). */
+   *  layout must not be re-measured at all (see useLabelsOverflow). */
   visible?: boolean;
 }) {
   const { t } = useTranslation(["session", "common"]);
@@ -295,11 +292,11 @@ export function Composer({
     return () => document.removeEventListener("mousedown", onDown);
   }, [agentOpen]);
   // A narrow pane cannot fit "Approve for me · Build · GPT-5.6 sol · High" as
-  // words — the row wrapped and ate the composer's height. Below this width the
-  // toolbar keeps the icons and drops the labels; every one of those buttons
-  // already carries an aria-label and a title, so nothing becomes unreachable.
-  const rootRef = useRef<HTMLDivElement>(null);
-  const compactToolbar = useCompactWidth(rootRef, TOOLBAR_LABEL_MIN_PX, visible);
+  // words. When the action row's items do not fit it, the toolbar keeps the
+  // icons and drops the labels; every one of those buttons already carries an
+  // aria-label and a title, so nothing becomes unreachable.
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const compactToolbar = useLabelsOverflow(toolbarRef, visible);
 
   const taRef = useRef<HTMLTextAreaElement>(null);
   // Caret position, tracked so an "@"/"#" being typed can be recognized in
@@ -783,7 +780,6 @@ export function Composer({
 
   return (
     <div
-      ref={rootRef}
       className={cn(
         "relative rounded-card border bg-surface px-2 py-2 shadow-card",
         // Plan mode gets the blue link tone — distinct from shell (warn) and
@@ -949,9 +945,10 @@ export function Composer({
           up on its own line under the other controls, with a gap between them
           — and flexbox wraps on an item's natural width rather than shrinking
           it first, so the long model name alone was enough to trigger it.
-          Everything here is fixed-width except the model chip, which truncates;
-          below `TOOLBAR_LABEL_MIN_PX` the buttons drop their labels too. */}
-      <div className="flex min-w-0 items-center gap-1.5 pt-1">
+          Every item keeps its natural width (none shrinks — a squeezed chip
+          spilled its "· effort ⌄" over the send button); when they do not
+          all fit, the buttons drop their labels (useLabelsOverflow). */}
+      <div ref={toolbarRef} className="flex min-w-0 items-center gap-1.5 pt-1">
         {command ? (
           <span
             className="flex h-7 shrink-0 items-center gap-1 rounded-input bg-accent/15 pl-2 pr-1 font-mono text-xs text-accent"
@@ -989,7 +986,7 @@ export function Composer({
         )}
         {/* Folder picker for a fresh draft — renders nothing once the session
             exists (its folder then shows in the header's Files toggle). */}
-        {showWorkspaceChip && <WorkspaceChip draftKey={draftKey} />}
+        {showWorkspaceChip && <WorkspaceChip draftKey={draftKey} compact={compactToolbar} />}
         {agentMode && onAgentModeChange && (
           <div className="relative shrink-0" ref={agentRef}>
             {agentOpen && (
@@ -1101,7 +1098,7 @@ export function Composer({
         )}
         {/* Model picker + send kept together, pushed right (and wrapping as a
             unit) so the send button is always reachable on a narrow pane. */}
-        <div className="ml-auto flex min-w-0 items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {onCompactContext && (
             <button
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-input text-muted hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"

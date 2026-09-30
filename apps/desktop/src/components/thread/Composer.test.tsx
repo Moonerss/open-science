@@ -357,24 +357,32 @@ describe("agent mode switch (Build / Plan)", () => {
 // A narrow pane could not fit "Approve for me · Build · GPT-5.6 sol · High" as
 // words, so the toolbar wrapped and ate the composer's height.
 describe("Composer toolbar in a narrow pane", () => {
-  /** Drive the ResizeObserver the composer measures itself with. */
+  /** jsdom has no layout: give the action row `width` of room, and every item
+   *  a width that grows with its text (so a label costs what it says). */
+  const patched = [
+    [HTMLElement.prototype, "offsetWidth"],
+    [Element.prototype, "clientWidth"],
+    [Element.prototype, "getClientRects"],
+  ] as const;
+  const saved = patched.map(([proto, key]) => Object.getOwnPropertyDescriptor(proto, key));
   function withWidth(width: number) {
-    const observers: ((w: number) => void)[] = [];
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        constructor(private cb: (e: { contentRect: { width: number } }[]) => void) {
-          observers.push((w) => this.cb([{ contentRect: { width: w } }]));
-        }
-        observe() {
-          observers[observers.length - 1]!(width);
-        }
-        disconnect() {}
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return 28 + (this.textContent?.length ?? 0) * 7;
       },
-    );
+    });
+    Object.defineProperty(Element.prototype, "clientWidth", { configurable: true, get: () => width });
+    Object.defineProperty(Element.prototype, "getClientRects", { configurable: true, value: () => [{}] });
   }
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    patched.forEach(([proto, key], i) => {
+      const d = saved[i];
+      if (d) Object.defineProperty(proto, key, d);
+      else delete (proto as unknown as Record<string, unknown>)[key];
+    });
+  });
 
   it("keeps the labels when there is room", () => {
     withWidth(900);
@@ -383,7 +391,7 @@ describe("Composer toolbar in a narrow pane", () => {
   });
 
   it("drops the labels but keeps the control reachable when narrow", () => {
-    withWidth(320);
+    withWidth(200);
     render(
       <Composer
         onSend={vi.fn()}

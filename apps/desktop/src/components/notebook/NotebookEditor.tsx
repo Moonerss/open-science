@@ -21,7 +21,7 @@ import { previewUrl, readArtifact, writeWorkspaceFile } from "@/lib/artifactFile
 import { isGatewayWeb } from "@/lib/webMode";
 import { useRuntimeStore } from "@/lib/runtime";
 import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
-import { PaneTitlebarInset } from "@/components/inspector/RightPane";
+import { PaneTitlebarInset, PANE_ICON_BUTTON, PANE_ICON_BUTTON_ON } from "@/components/inspector/RightPane";
 import { parseIpynb, serializeIpynb, notebookLanguage } from "@/lib/notebook-file";
 import {
   CodeEditor,
@@ -430,21 +430,21 @@ export function NotebookEditor({
         // 32px either way: a notebook beside a conversation has to line up
         // with that conversation's header. See `PANE_HEADER`.
         className={cn(
-          "flex h-8 shrink-0 select-none items-center gap-1.5 border-b px-2.5",
+          "flex h-8 shrink-0 select-none items-center gap-1 border-b px-2.5",
           compactHeader ? "border-faint" : "border-border",
         )}
       >
         <PaneTitlebarInset />
         {onBack && (
           <button
-            className="text-text hover:opacity-60"
+            className={PANE_ICON_BUTTON}
             aria-label={t("notebooks.editor.backAria")}
             onClick={onBack}
           >
-            <ArrowLeft size={14} strokeWidth={1.5} />
+            <ArrowLeft size={13} strokeWidth={1.5} />
           </button>
         )}
-        <NotebookPen size={14} strokeWidth={1.5} className="shrink-0 text-text" />
+        <NotebookPen size={13} strokeWidth={1.5} className="shrink-0 text-muted" />
         <h1 className="min-w-0 flex-1 truncate text-[13px] font-medium text-text">{path}</h1>
         <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
           {language === "r" ? t("notebooks.editor.languageR") : t("notebooks.editor.languagePython")}
@@ -465,40 +465,40 @@ export function NotebookEditor({
         </span>
         {isTauri && jupyterInstalled && (
           <button
-            className="flex items-center gap-1 text-text hover:opacity-60 disabled:opacity-40"
+            className={PANE_ICON_BUTTON}
             aria-label={t("notebooks.editor.openJupyterLabAria")}
             title={t("notebooks.openJupyterLabTitle")}
             disabled={openingLab}
             onClick={() => void openLab()}
           >
-            <ExternalLink size={14} strokeWidth={1.5} />
+            <ExternalLink size={13} strokeWidth={1.5} />
           </button>
         )}
         <button
-          className={cn(showHistory ? "text-accent" : "text-text hover:opacity-60")}
+          className={cn(PANE_ICON_BUTTON, showHistory && PANE_ICON_BUTTON_ON)}
           aria-label={t("notebooks.editor.historyAria")}
           title={t("notebooks.editor.historyTitle")}
           aria-pressed={showHistory}
           onClick={() => setShowHistory((v) => !v)}
         >
-          <History size={14} strokeWidth={1.5} />
+          <History size={13} strokeWidth={1.5} />
         </button>
         <button
-          className="text-text hover:opacity-60"
+          className={PANE_ICON_BUTTON}
           aria-label={t("notebooks.editor.reloadAria")}
           title={t("notebooks.editor.reloadTitle")}
           onClick={() => void load()}
         >
-          <RefreshCw size={14} strokeWidth={1.5} />
+          <RefreshCw size={13} strokeWidth={1.5} />
         </button>
         {controls}
         {onClose && (
           <button
-            className="text-text hover:opacity-60"
+            className={PANE_ICON_BUTTON}
             aria-label={t("notebooks.editor.closeAria")}
             onClick={onClose}
           >
-            <X size={14} strokeWidth={1.5} />
+            <X size={13} strokeWidth={1.5} />
           </button>
         )}
       </div>

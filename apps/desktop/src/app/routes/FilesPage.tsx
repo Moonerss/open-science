@@ -24,7 +24,7 @@ import { baseName } from "@/components/thread/WorkspaceChip";
 import { NotebookEditor } from "@/components/notebook/NotebookEditor";
 import { FilePreviewInspector } from "@/components/inspector/FilePreviewInspector";
 import { FileContextMenu } from "@/components/files/FileContextMenu";
-import { PaneTitlebarInset, PANE_HEADER } from "@/components/inspector/RightPane";
+import { PaneTitlebarInset, PANE_HEADER, PANE_ICON_BUTTON } from "@/components/inspector/RightPane";
 import { cn } from "@/lib/cn";
 
 const EXT_LANG: Record<string, string> = {
@@ -361,7 +361,7 @@ export function SessionFilesPane({
     <div className="flex h-full flex-col">
       <div className={PANE_HEADER}>
         <PaneTitlebarInset />
-        <Folder size={14} strokeWidth={1.5} className="shrink-0 text-text" />
+        <Folder size={13} strokeWidth={1.5} className="shrink-0 text-muted" />
         <span
           className="min-w-0 truncate text-[13px] font-medium text-text"
           title={sessionDir ?? workspace ?? undefined}
@@ -373,8 +373,8 @@ export function SessionFilesPane({
         </span>
         <div className="flex-1" />
         {controls}
-        <button className="text-text hover:opacity-60" aria-label={t("files.pane.closeAria")} onClick={onClose}>
-          <X size={14} strokeWidth={1.5} />
+        <button className={PANE_ICON_BUTTON} aria-label={t("files.pane.closeAria")} onClick={onClose}>
+          <X size={13} strokeWidth={1.5} />
         </button>
       </div>
       {crumbs.length > 0 && (

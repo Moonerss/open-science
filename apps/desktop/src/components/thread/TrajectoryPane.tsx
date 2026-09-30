@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import type { ThreadBlock } from "@ai4s/shared";
 import { IconBranchOutlineRegular, IconSearchOutlineRegular } from "@/components/icons/dsh";
-import { PANE_HEADER, PaneTitlebarInset } from "@/components/inspector/RightPane";
+import { PANE_HEADER, PaneTitlebarInset, PANE_ICON_BUTTON } from "@/components/inspector/RightPane";
 import css from "./TrajectoryPane.module.css";
 
 /**
@@ -219,8 +219,8 @@ export const TrajectoryPane = memo(function TrajectoryPane({
         <span className="text-xs text-muted">{t("trajectory.steps", { count: steps.length })}</span>
         <div className="flex-1" />
         {controls}
-        <button className="text-text hover:opacity-60" aria-label={t("trajectory.close")} onClick={onClose}>
-          <X size={14} strokeWidth={1.5} />
+        <button className={PANE_ICON_BUTTON} aria-label={t("trajectory.close")} onClick={onClose}>
+          <X size={13} strokeWidth={1.5} />
         </button>
       </div>
       <div className={css.root}>
