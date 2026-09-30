@@ -62,6 +62,9 @@ export const PaneTree = memo(function PaneTree({
   const allLeaves = leaves(tree);
   // A lone pane needs no focus ring / dim (nothing to distinguish it from).
   const solo = allLeaves.length === 1;
+  // Tiled panes are narrow, so their text starts smaller unless the user set a
+  // zoom: one split takes a little off, a second split takes more.
+  const defaultZoom = solo ? 1 : allLeaves.length === 2 ? 0.9 : 0.75;
 
   if (zoomedLeafId) {
     const zoomed = allLeaves.find((l) => l.id === zoomedLeafId);
@@ -81,7 +84,14 @@ export const PaneTree = memo(function PaneTree({
   }
 
   return (
-    <Node node={tree} focusedLeafId={focusedLeafId ?? ""} active={active} laidOut={laidOut} solo={solo} />
+    <Node
+      node={tree}
+      focusedLeafId={focusedLeafId ?? ""}
+      active={active}
+      laidOut={laidOut}
+      solo={solo}
+      defaultZoom={defaultZoom}
+    />
   );
 });
 
@@ -91,12 +101,14 @@ function Node({
   active,
   laidOut,
   solo,
+  defaultZoom,
 }: {
   node: PaneNode;
   focusedLeafId: string;
   active: boolean;
   laidOut: boolean;
   solo: boolean;
+  defaultZoom: number;
 }) {
   if (node.kind === "leaf") {
     return (
@@ -107,8 +119,7 @@ function Node({
         // the outgoing one's composer text (#91).
         key={node.id}
         leaf={node}
-        // Tiled panes are narrow → default to 75% unless the user set a zoom.
-        zoom={node.zoom ?? (solo ? 1 : 0.75)}
+        zoom={node.zoom ?? defaultZoom}
         focused={node.id === focusedLeafId}
         active={active}
         laidOut={laidOut}
@@ -116,7 +127,15 @@ function Node({
       />
     );
   }
-  return <Split node={node} focusedLeafId={focusedLeafId} active={active} laidOut={laidOut} />;
+  return (
+    <Split
+      node={node}
+      focusedLeafId={focusedLeafId}
+      active={active}
+      laidOut={laidOut}
+      defaultZoom={defaultZoom}
+    />
+  );
 }
 
 /** Cumulative boundary after child `i` (fraction 0..1). */
@@ -140,11 +159,13 @@ function Split({
   focusedLeafId,
   active,
   laidOut,
+  defaultZoom,
 }: {
   node: PaneSplit;
   focusedLeafId: string;
   active: boolean;
   laidOut: boolean;
+  defaultZoom: number;
 }) {
   const setSplitSizes = useLayoutStore((s) => s.setSplitSizes);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -183,6 +204,7 @@ function Split({
             active={active}
             laidOut={laidOut}
             solo={false}
+            defaultZoom={defaultZoom}
           />
         </FragmentChild>
       ))}

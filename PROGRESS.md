@@ -1,5 +1,7 @@
 # Progress
 
+2026-09-29 20:37 · fix(layout): 分屏默认缩放按窗格数递减：1 个 100%、2 个 90%、3 个及以上 75%（原来一分屏就 75%）；用户手动设过的缩放不受影响，缩放菜单加 90% 档。tsc、eslint、1667 前端测试通过；DMG 已打，待实机验收。
+
 2026-09-29 · feat(ui): 按 DeepSeek Harness（MIT）六项移植。① 对话右侧轮次导航条（刻度/悬停预览问答/点击跳转/当前轮高亮，未虚拟化，窄于 600px 隐藏）；② 侧栏 Projects 标题行内联搜索（按会话名/项目名过滤，平铺结果）；③ 侧栏整体改 DSH 外壳与 1px 图标：整套 DSH 图标模块搬入 components/icons/dsh，DSH 设计变量映射到本应用三套主题（index.css token 层），侧栏样式搬 DSH CSS module；④ 执行过程：外层「Took Xm ⌄」+0.5px 细线，工具组标题改 DSH 分类短语（无次数、按频次前三类，zh 共享「已」前缀），图标按主类，展开体限高滚动；⑤ Trajectory：session 头部文件夹旁图标按钮开右侧面板（Duration/Turns/Calls/搜索、Input·Model·Tools 三泳道、USER/ASSISTANT/TOOL 标签、命令→结果），基于现有 thread 数据重写而非搬 DSH 事件投影；⑥ 外观：Light/Warm/Dark/System 四卡（新增跟随系统）+ 对话字号步进器（12–20px，只缩放对话内容）。tsc、eslint、1663 前端测试通过；浏览器逐项截图核过，待实机验收。
 
 2026-09-28 10:20 · fix(sidebar): 归档改为先确认，确认框写明去向（全部会话 → 显示已归档 → 恢复），7 种语言文案按各语言界面实际标签核对；右键菜单的归档同走此确认。项目下的 session 去掉树形缩进，标题与项目名对齐（8+16+6=30px），空提示与「全部会话」行同步对齐。tsc、eslint、1662 前端测试通过。

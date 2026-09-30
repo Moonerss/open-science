@@ -1301,7 +1301,7 @@ export function SessionView({
 
 /** Per-pane zoom control: a compact "NN%" button opening preset levels. Lets a
  *  narrow tiled pane shrink its content so the text isn't oversized. */
-const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5];
+const ZOOM_LEVELS = [0.5, 0.75, 0.9, 1, 1.25, 1.5];
 function ZoomMenu({ zoom, onPick }: { zoom: number; onPick: (z: number) => void }) {
   const { t } = useTranslation("session");
   const [open, setOpen] = useState(false);
