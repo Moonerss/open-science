@@ -220,6 +220,7 @@ pub fn run() {
             artifact_file::reveal_path,
             artifact_file::absolute_path,
             artifact_file::resolve_artifact,
+            artifact_file::locate_local_path,
             artifact_file::save_text_file,
             artifact_file::open_url,
             artifact_file::add_files_to_workspace,

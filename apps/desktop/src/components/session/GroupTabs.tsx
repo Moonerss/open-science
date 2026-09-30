@@ -286,7 +286,14 @@ export function GroupTabs() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmCloseId, setConfirmCloseId] = useState<string | null>(null);
+  const sessions = useRuntimeStore((s) => s.sessions);
   const fallback = (n: number) => t("group.defaultName", { n });
+  /** A conversation's Screen is named after the conversation — the first few
+   *  words of its title, once the runtime has generated one. */
+  const sessionTitle = (sessionId: string): string | null => {
+    const title = sessions.find((x) => x.id === sessionId)?.title;
+    return title && !isPlaceholderTitle(title) ? shortTitle(title) : null;
+  };
   /** What to call a Screen that holds a surface rather than a conversation.
    *  A file keeps its own name — that is the most useful thing a tab can say —
    *  and the fixed surfaces use the name they are known by elsewhere. */
@@ -381,7 +388,7 @@ export function GroupTabs() {
                 {editingId === g.id ? (
                   <InlineName
                     initial={g.name}
-                    placeholder={groupLabel(g, i, fallback, describe)}
+                    placeholder={groupLabel(g, i, fallback, describe, sessionTitle)}
                     onCommit={(name) => {
                       renameGroup(g.id, name);
                       setEditingId(null);
@@ -389,7 +396,7 @@ export function GroupTabs() {
                     onCancel={() => setEditingId(null)}
                   />
                 ) : (
-                  <span className="max-w-[160px] truncate">{groupLabel(g, i, fallback, describe)}</span>
+                  <span className="max-w-[160px] truncate">{groupLabel(g, i, fallback, describe, sessionTitle)}</span>
                 )}
                 {/* Close is always available — closing the last group empties it. */}
                 <button
@@ -427,6 +434,25 @@ export function GroupTabs() {
       )}
     </>
   );
+}
+
+/** OpenCode's title for a session it has not summarized yet ("New session -
+ *  <timestamp>", "Child session - …"): not a name worth showing on a tab. */
+export function isPlaceholderTitle(title: string): boolean {
+  return /^(New|Child) session - \d{4}-\d{2}-\d{2}T/.test(title);
+}
+
+/** The first few words of a title, sized for a tab: 16 columns, a CJK
+ *  character counting as two. */
+export function shortTitle(title: string, columns = 16): string {
+  let width = 0;
+  let out = "";
+  for (const ch of title.trim()) {
+    width += /[\u2e80-\u9fff\uac00-\ud7af\uff00-\uffef]/.test(ch) ? 2 : 1;
+    if (width > columns) return `${out.trimEnd()}…`;
+    out += ch;
+  }
+  return out;
 }
 
 /** Inline rename field for a group tab; commits on Enter/blur, cancels on Esc. */

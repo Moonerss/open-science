@@ -26,6 +26,7 @@ import { FilePreviewInspector } from "@/components/inspector/FilePreviewInspecto
 import { FileContextMenu } from "@/components/files/FileContextMenu";
 import { PaneTitlebarInset, PANE_HEADER, PANE_ICON_BUTTON } from "@/components/inspector/RightPane";
 import { cn } from "@/lib/cn";
+import { useOverlayTitlebar } from "@/lib/store";
 
 const EXT_LANG: Record<string, string> = {
   py: "python", r: "r", jl: "julia", sh: "bash", tex: "latex", md: "markdown",
@@ -106,6 +107,7 @@ export function FilesPage({
 } = {}) {
   const { t } = useTranslation(["pages", "common"]);
   const isMobile = useIsMobile();
+  const overlayTitlebar = useOverlayTitlebar();
   // Base-relative; "" = the base folder. Persisted client-side so returning to
   // Files continues from the directory the user was browsing.
   const [dir, setDirState] = useState(() => rememberedDirectory(GLOBAL_FILES_LOCATION));
@@ -175,7 +177,12 @@ export function FilesPage({
             : cn("border-r border-border", isMobile ? cn("w-full", selected && "hidden") : "w-72 shrink-0"),
         )}
       >
-        <div className="flex flex-wrap items-center gap-0.5 border-b border-border px-3 py-2.5 text-[13px]">
+        {/* PANE_HEADER's 32px, so its line meets the preview header's; the
+            window drags from it since the page has no titlebar strip above. */}
+        <div
+          data-tauri-drag-region={overlayTitlebar || undefined}
+          className={cn(PANE_HEADER, "gap-0.5 overflow-x-auto whitespace-nowrap px-3 text-[13px]")}
+        >
           <button
             className={cn("rounded px-1 hover:bg-surface-2", dir ? "text-link" : "font-medium text-text")}
             onClick={() => setDir("")}

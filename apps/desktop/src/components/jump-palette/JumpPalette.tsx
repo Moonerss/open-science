@@ -112,7 +112,7 @@ export function JumpPalette() {
         navigate(target.sessionId ? `/live/${target.sessionId}` : "/live");
         return;
       case "session":
-        layout.openSessionEphemeral(target.sessionId, target.projectName, target.projectId);
+        layout.openSessionEphemeral(target.sessionId, target.projectId);
         navigate(`/live/${target.sessionId}`);
         return;
       case "action": {
@@ -126,7 +126,7 @@ export function JumpPalette() {
         else if (projectId !== DEFAULT_PROJECT && project) {
           // A new session IN the project: its draft is aimed at the project's
           // folder, the same as the sidebar's "+" on a project.
-          const leafId = layout.openInNewGroup(null, project.name, project.id);
+          const leafId = layout.openInNewGroup(null, project.id);
           await runtime.startDraftInWorkspace(project.path, draftKeyFor(leafId));
         } else {
           layout.openInNewGroup(null);

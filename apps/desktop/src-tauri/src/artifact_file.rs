@@ -57,6 +57,19 @@ fn reveal_impl(full: &Path) -> Result<(), String> {
     opener::reveal(full).map_err(|e| format!("reveal failed: {e}"))
 }
 
+/// A path the user can click in a conversation or a terminal — absolute, `~/…`,
+/// or relative to `cwd` — resolved to an existing file or folder under home
+/// (the "home" scope), or None: no link is drawn for what cannot be opened.
+#[tauri::command(async)]
+pub fn locate_local_path(
+    app: AppHandle,
+    path: String,
+    cwd: Option<String>,
+) -> Result<Option<osd_core::artifact_file::LocalPath>, String> {
+    let home = scope_root(&app, Some("home"))?;
+    Ok(osd_core::artifact_file::locate_local(&home, &path, cwd.as_deref()))
+}
+
 /// The workspace path an agent message named, resolved to a real file (searching
 /// by basename when the literal path does not exist), or None.
 #[tauri::command(async)]

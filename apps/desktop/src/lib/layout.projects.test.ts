@@ -87,14 +87,14 @@ describe("Screens belong to projects", () => {
 
   it("opening a session lands in its project and shows that project", async () => {
     const { S, selectActiveProjectId } = await fresh([group("g1", "", leaf("a", "A"))]);
-    S().openSessionEphemeral("X", "Proj", "P");
+    S().openSessionEphemeral("X", "P");
     expect(selectActiveProjectId(S())).toBe("P");
     expect(S().groups.find((g) => g.id === S().activeGroupId)?.projectId).toBe("P");
   });
 
   it("a session already on screen elsewhere is shown there, switching project", async () => {
     const { S, selectActiveProjectId } = await fresh([group("g1", "", leaf("a", "A")), group("g2", "P", leaf("b", "B"))]);
-    S().openSessionEphemeral("B", "", "P");
+    S().openSessionEphemeral("B", "P");
     expect(S().activeGroupId).toBe("g2");
     expect(selectActiveProjectId(S())).toBe("P");
     expect(S().groups).toHaveLength(2);
@@ -102,9 +102,9 @@ describe("Screens belong to projects", () => {
 
   it("the preview Screen moves with the session into its project, not a second preview (#78)", async () => {
     const { S } = await fresh([group("g1", "", leaf("a", "A"))]);
-    S().openSessionEphemeral("X", "", "P");
+    S().openSessionEphemeral("X", "P");
     const preview = S().ephemeralGroupId;
-    S().openSessionEphemeral("Y", "", "Q");
+    S().openSessionEphemeral("Y", "Q");
     expect(S().ephemeralGroupId).toBe(preview);
     expect(S().groups.find((g) => g.id === preview)?.projectId).toBe("Q");
     expect(S().groups).toHaveLength(2);
@@ -112,7 +112,7 @@ describe("Screens belong to projects", () => {
 
   it("new work in another project gets a Screen there, filling an empty one first", async () => {
     const { S } = await fresh([group("g1", "", leaf("a", "A")), group("g2", "P", null)]);
-    S().openInNewGroup("N", "Proj", "P");
+    S().openInNewGroup("N", "P");
     expect(S().activeGroupId).toBe("g2"); // the empty P Screen, not a new one
     expect(S().groups).toHaveLength(2);
   });

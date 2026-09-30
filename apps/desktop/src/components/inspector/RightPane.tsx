@@ -99,6 +99,14 @@ export function RightPane({
 export const PANE_HEADER =
   "flex h-8 shrink-0 select-none items-center gap-1 border-b border-border px-2.5";
 
+/** A header that stays out of sight until it is needed: shown while hovered or
+ *  focused, or while one of its menus is open (so it does not fade from under
+ *  the pointer). Touch screens cannot hover — always shown there. For the
+ *  header of a Screen's ONLY pane, where nothing beside it needs telling
+ *  apart. */
+export const HOVER_REVEAL =
+  "opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100 has-[[aria-expanded=true]]:opacity-100 [@media(hover:none)]:opacity-100";
+
 /** Every icon button in a pane header — the conversation header's own look
  *  (13px glyph, muted until hovered, a soft hover fill), so a panel opened
  *  beside or over a conversation carries the same controls as it. */

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   makeLeaf,
+  makeContentLeaf,
+  groupLabel,
   leaves,
   findLeaf,
   insertLeaf,
@@ -15,6 +17,7 @@ import {
   MIN_SIZE,
   type PaneNode,
   type PaneSplit,
+  type LayoutGroup,
 } from "./layout";
 
 const asSplit = (n: PaneNode): PaneSplit => {
@@ -189,10 +192,9 @@ describe("layout store — groups", () => {
   });
 
   it("openInNewGroup gives new work its own Screen, leaving the busy pane alone", () => {
-    const leafId = S().openInNewGroup(null, "Install a skill");
+    const leafId = S().openInNewGroup(null);
     expect(S().groups).toHaveLength(2);
     expect(S().activeGroupId).not.toBe("g0");
-    expect(S().groups[1].name).toBe("Install a skill");
     // One draft pane, focused; the pane the user was in still shows A.
     expect(leaves(S().tree!).map((l) => l.sessionId)).toEqual([null]);
     expect(S().focusedLeafId).toBe(leafId);
@@ -473,20 +475,37 @@ describe("layout store — groups", () => {
     expect(S().ephemeralGroupId).toBe(S().activeGroupId);
   });
 
-  // "Screen 3" says nothing about what is in it; a session opened from a project
-  // names its Screen after that project — including when the tentative Screen is
-  // reused for a session from somewhere else.
-  it("names the Screen after the session's project, and relabels a reused one", () => {
-    S().openSessionEphemeral("Z", "Thesis");
-    expect(S().groups.find((g) => g.id === S().activeGroupId)?.name).toBe("Thesis");
+  // Only a rename stores a Screen's name. A session opened into the tentative
+  // Screen — fresh or reused — leaves it unnamed, so its label is derived from
+  // what it shows (see groupLabel) and follows the session's title.
+  it("opening a session never stores a Screen name; renaming keeps the Screen", () => {
+    S().openSessionEphemeral("Z");
+    const preview = S().activeGroupId;
+    expect(S().groups.find((g) => g.id === preview)?.name).toBe("");
 
-    S().openSessionEphemeral("Y", "BCI trends");
-    expect(S().groups).toHaveLength(2); // the tentative Screen was reused
-    expect(S().groups.find((g) => g.id === S().activeGroupId)?.name).toBe("BCI trends");
-
-    // A session that belongs to no project falls back to the numbered default.
-    S().openSessionEphemeral("X");
+    // A named preview is pinned: the next session gets its own Screen and the
+    // user's name survives.
+    S().renameGroup(preview, "Thesis");
+    S().openSessionEphemeral("Y");
+    expect(S().activeGroupId).not.toBe(preview);
+    expect(S().groups.find((g) => g.id === preview)?.name).toBe("Thesis");
     expect(S().groups.find((g) => g.id === S().activeGroupId)?.name).toBe("");
+  });
+
+  it("groupLabel: the user's name, else the first pane's content or session title, else Screen N", () => {
+    const fallback = (n: number) => `Screen ${n}`;
+    const describe = () => "Terminal";
+    const titles: Record<string, string | null> = { A: "Fit the decay curve", B: null };
+    const sessionTitle = (id: string) => titles[id] ?? null;
+    const g = (name: string, tree: PaneNode | null): LayoutGroup =>
+      ({ id: "x", name, tree, focusedLeafId: null, zoomedLeafId: null });
+
+    expect(groupLabel(g("Mine", makeLeaf("A")), 0, fallback, describe, sessionTitle)).toBe("Mine");
+    expect(groupLabel(g("", makeLeaf("A")), 0, fallback, describe, sessionTitle)).toBe("Fit the decay curve");
+    // Not titled yet (the runtime's placeholder): the numbered default.
+    expect(groupLabel(g("", makeLeaf("B")), 2, fallback, describe, sessionTitle)).toBe("Screen 3");
+    expect(groupLabel(g("", makeContentLeaf({ kind: "terminal" })), 0, fallback, describe, sessionTitle)).toBe("Terminal");
+    expect(groupLabel(g("", null), 1, fallback, describe, sessionTitle)).toBe("Screen 2");
   });
 
   it("bindSession binds the pane's OWN Screen, even after switching away", () => {

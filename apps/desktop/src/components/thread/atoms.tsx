@@ -245,7 +245,7 @@ export const AgentMessage = memo(function AgentMessage({
     // Marked so a text selection inside an ANSWER (never a tool log or the
     // user's own message) can offer follow-up actions — see SelectionActions.
     <div {...{ [HOVER_HOST]: "" }} data-agent-message className="relative">
-      <MarkdownViewer>{shown}</MarkdownViewer>
+      <MarkdownViewer links>{shown}</MarkdownViewer>
       {refs.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {refs.map((path) => (

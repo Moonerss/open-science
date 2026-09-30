@@ -4,6 +4,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { PanelLeft } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sidebar } from "@/components/sidebar/Sidebar";
+import { LinkMenu } from "@/components/ui/LinkMenu";
 import { JumpPalette } from "@/components/jump-palette/JumpPalette";
 import { CommandPalette } from "@/components/command-palette/CommandPalette";
 import { PaneDragGhost } from "@/components/session/PaneDragGhost";
@@ -198,6 +199,10 @@ export function AppShell() {
   const overlayTitlebar = useOverlayTitlebar();
   const pathname = useLocation().pathname;
   const pageOwnsTitlebar = pathname.startsWith("/live") || pathname.startsWith("/example");
+  // Files: its two 32px headers (breadcrumb, preview) are the top row while the
+  // sidebar is open — the strip above them was a blank band. Collapsed, the
+  // strip comes back: it holds the expand button beside the traffic lights.
+  const filesOwnsTitlebar = pathname.startsWith("/files") && !sidebarCollapsed;
 
   if (isGatewayWeb && !webReady) {
     return <WebTokenGate onConnect={() => setWebReady(true)} />;
@@ -238,7 +243,7 @@ export function AppShell() {
           {/* Titlebar strip for pages that don't own one: keeps the whole top
               of the content area draggable under the macOS overlay titlebar,
               and hosts the expand button while the sidebar is collapsed. */}
-          {!isMobile && !pageOwnsTitlebar && (overlayTitlebar || (sidebarCollapsed && !inSettings)) && (
+          {!isMobile && !pageOwnsTitlebar && !filesOwnsTitlebar && (overlayTitlebar || (sidebarCollapsed && !inSettings)) && (
             <div
               data-tauri-drag-region={overlayTitlebar || undefined}
               style={
@@ -267,6 +272,7 @@ export function AppShell() {
       </div>
       <StatusBar />
       <CommandPalette />
+      <LinkMenu />
       <JumpPalette />
       <Toaster />
       {/* Sign-in for an interactively authenticated compute host (#73): app-wide,

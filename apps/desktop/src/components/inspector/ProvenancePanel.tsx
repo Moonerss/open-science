@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, MessageSquare, Package, RotateCcw, Terminal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useOpenSession } from "@/lib/useOpenSession";
 import { useTranslation } from "react-i18next";
 import type { ProvenanceRecord, RunRecord } from "@ai4s/shared";
 import { listProvenance, readEnvLockfile } from "@/lib/provenance";
@@ -58,6 +59,7 @@ export function ProvenancePanel({ path, language }: { path: string; language?: s
   // The package lockfile currently shown, keyed by its content hash.
   const [lockfile, setLockfile] = useState<{ hash: string; text: string | null } | null>(null);
   const navigate = useNavigate();
+  const openSession = useOpenSession();
   const setComposerDraft = useUiStore((s) => s.setComposerDraft);
 
   // Toggle the pip-freeze lockfile for a snapshot hash; loads it lazily on open.
@@ -191,7 +193,7 @@ export function ProvenancePanel({ path, language }: { path: string; language?: s
                   {r.sessionId && (
                     <button
                       className="flex items-center gap-1 text-link hover:underline"
-                      onClick={() => navigate(`/live/${r.sessionId}`)}
+                      onClick={() => openSession(r.sessionId!)}
                       title={t("provenance.openConversationTitle")}
                     >
                       <MessageSquare size={12} /> {t("provenance.openConversation")}

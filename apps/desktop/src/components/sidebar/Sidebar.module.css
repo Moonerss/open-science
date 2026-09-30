@@ -52,11 +52,6 @@
   display: inline-flex;
   align-items: center;
   overflow: hidden;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
 }
 
 .brandIdentity {

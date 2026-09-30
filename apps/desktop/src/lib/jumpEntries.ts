@@ -23,7 +23,7 @@ export type JumpTarget =
   | { kind: "project"; projectId: string }
   | { kind: "screen"; groupId: string }
   | { kind: "pane"; groupId: string; leafId: string; sessionId: string | null }
-  | { kind: "session"; sessionId: string; projectId: string; projectName: string };
+  | { kind: "session"; sessionId: string; projectId: string };
 
 export interface JumpEntry {
   /** Unique across the list; also what the palette matches against. */
@@ -143,7 +143,7 @@ export function jumpEntries(input: JumpInput): JumpEntry[] {
       section: "sessions",
       label: s.title || labels.session,
       detail: name,
-      target: { kind: "session", sessionId: s.id, projectId, projectName: name },
+      target: { kind: "session", sessionId: s.id, projectId },
     });
   }
   return entries;

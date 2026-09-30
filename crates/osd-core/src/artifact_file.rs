@@ -102,15 +102,57 @@ pub fn resolve_under(root: &Path, rel: &str) -> Result<PathBuf, String> {
 }
 
 /// The folder tree a file command operates in: the ACTIVE session workspace
-/// (default) or the base folder every session workspace is created under.
-/// Pages declare their scope explicitly — no fallback guessing between the
-/// two, so an identical relative path can never resolve ambiguously.
+/// (default), the base folder every session workspace is created under, or —
+/// on the desktop only — the user's home folder, for a path the user clicked
+/// in a conversation or a terminal. Pages declare their scope explicitly — no
+/// fallback guessing between them, so an identical relative path can never
+/// resolve ambiguously. The gateway refuses "home" (see `fs_base`): a web
+/// client must never reach beyond the workspaces.
 pub fn scope_root(env: &Env, root: Option<&str>) -> Result<PathBuf, String> {
     match root.unwrap_or("workspace") {
         "workspace" => workspace_dir(env),
         "base" => crate::runtime::base_workspace_dir(env),
+        "home" => crate::env::home(),
         other => Err(format!("unknown root scope: {other}")),
     }
+}
+
+/// A local path the user can open from a link: home-relative (`/`-separated,
+/// for the "home" scope) and whether it is a folder.
+#[derive(serde::Serialize, Debug, PartialEq)]
+pub struct LocalPath {
+    pub rel: String,
+    pub is_dir: bool,
+}
+
+/// Resolve a path as printed in a conversation or a terminal — absolute,
+/// `~/…`, or relative to `cwd` — to an existing file or folder under `home`.
+/// None when it does not exist or lies outside home (nothing to open, so no
+/// link is drawn).
+pub fn locate_local(home: &Path, path: &str, cwd: Option<&str>) -> Option<LocalPath> {
+    let raw = Path::new(path);
+    let joined = if let Some(rest) = path.strip_prefix("~/") {
+        home.join(rest)
+    } else if raw.is_absolute() {
+        raw.to_path_buf()
+    } else {
+        let cwd = Path::new(cwd?);
+        if !cwd.is_absolute() {
+            return None;
+        }
+        cwd.join(raw)
+    };
+    let home = home.canonicalize().ok()?;
+    let full = joined.canonicalize().ok()?;
+    let rel = full.strip_prefix(&home).ok()?;
+    let parts: Vec<String> = rel
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    if parts.is_empty() {
+        return None; // home itself: not a useful link
+    }
+    Some(LocalPath { rel: parts.join("/"), is_dir: full.is_dir() })
 }
 
 // Bounds for the basename search so a huge workspace can't stall a resolve call.
@@ -643,10 +685,40 @@ mod tests {
     use super::{
         attach_paths, base64_decode, base64_encode, dir_entries, encode_for_preview,
         is_discardable_name, Attached,
-        exceeds_preview_cap, locate_under, mime_for, strip_windows_verbatim, unique_name,
-        workspace_relative,
+        exceeds_preview_cap, locate_local, locate_under, mime_for, strip_windows_verbatim,
+        unique_name, workspace_relative, LocalPath,
     };
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn local_links_resolve_under_home_only() {
+        let home = std::env::temp_dir().join(format!("osd-local-{}", std::process::id()));
+        let outside = std::env::temp_dir().join(format!("osd-local-out-{}", std::process::id()));
+        std::fs::create_dir_all(home.join("repo/src")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(home.join("repo/src/main.rs"), "fn main() {}").unwrap();
+        let file = |rel: &str| Some(LocalPath { rel: rel.into(), is_dir: false });
+        let abs = home.join("repo/src/main.rs");
+
+        // Absolute, relative to the terminal's directory, and a folder.
+        assert_eq!(locate_local(&home, abs.to_str().unwrap(), None), file("repo/src/main.rs"));
+        let cwd = home.join("repo");
+        assert_eq!(locate_local(&home, "src/main.rs", cwd.to_str()), file("repo/src/main.rs"));
+        assert_eq!(
+            locate_local(&home, "src", cwd.to_str()),
+            Some(LocalPath { rel: "repo/src".into(), is_dir: true })
+        );
+        // A relative path with no directory to resolve it against, a missing
+        // file, a path escaping home, and home itself: no link.
+        assert_eq!(locate_local(&home, "src/main.rs", None), None);
+        assert_eq!(locate_local(&home, "src/nope.rs", cwd.to_str()), None);
+        assert_eq!(locate_local(&home, "../../..", cwd.to_str()), None);
+        assert_eq!(locate_local(&home, outside.to_str().unwrap(), None), None);
+        assert_eq!(locate_local(&home, home.to_str().unwrap(), None), None);
+
+        let _ = std::fs::remove_dir_all(&home);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
 
     #[test]
     fn verbatim_windows_paths_unwrap_to_the_plain_form() {

@@ -13,10 +13,13 @@ import {
   putTerminal,
 } from "@/lib/terminalSessions";
 import {
+  findLeaf,
   resumeCommand,
   terminalStartup,
+  useLayoutStore,
   type TerminalAgent,
 } from "@/lib/layout";
+import { registerTerminalLinks } from "./terminalLinks";
 import { TerminalSearch } from "./TerminalSearch";
 import { isJumpChord } from "@/components/jump-palette/JumpPalette";
 
@@ -153,6 +156,15 @@ export function TerminalPane({
         // No WebGL here; the DOM renderer is already in place.
       }
       fit.fit();
+      // Where the shell is NOW (the layout follows it, see `recordTerminal`),
+      // so a relative path printed after a `cd` resolves where it should.
+      const links = registerTerminalLinks(term, () => {
+        for (const g of useLayoutStore.getState().groups) {
+          const content = g.tree && findLeaf(g.tree, leafId)?.content;
+          if (content?.kind === "terminal") return content.cwd ?? null;
+        }
+        return cwd ?? null;
+      });
 
       await invoke("terminal_open", {
         id: leafId,
@@ -230,6 +242,7 @@ export function TerminalPane({
           unlistenData();
           unlistenExit();
           input.dispose();
+          links.dispose();
           observer.disconnect();
           if (queued) cancelAnimationFrame(queued);
         },

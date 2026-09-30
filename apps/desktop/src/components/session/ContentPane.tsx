@@ -10,6 +10,8 @@ import { InlineName } from "@/components/ui/InlineName";
 import { NotebookEditor } from "@/components/notebook/NotebookEditor";
 import { FilesPage } from "@/app/routes/FilesPage";
 import { FilePreviewInspector } from "@/components/inspector/FilePreviewInspector";
+import { HOVER_REVEAL } from "@/components/inspector/RightPane";
+import { cn } from "@/lib/cn";
 
 /**
  * A pane holding something that is not a conversation: a terminal, the file
@@ -25,10 +27,13 @@ export function ContentPane({
   content,
   leafId,
   onClose,
+  solo = false,
 }: {
   content: PaneContent;
   leafId: string;
   onClose: () => void;
+  /** The Screen's only pane: the terminal's header shows on hover only. */
+  solo?: boolean;
 }) {
   const { t } = useTranslation(["session", "nav"]);
   const openContentPane = useLayoutStore((s) => s.openContentPane);
@@ -51,9 +56,14 @@ export function ContentPane({
     case "terminal":
       return (
         <div className="flex h-full flex-col bg-surface">
-          {/* 32px, like every pane beside a conversation — only the rule is
-              fainter here. See `PANE_HEADER`. */}
-          <header className="flex h-8 shrink-0 select-none items-center gap-1.5 border-b border-faint px-2.5">
+          {/* 32px, like every pane beside a conversation (see `PANE_HEADER`),
+              and no rule under it: the terminal's surface starts right below. */}
+          <header
+            className={cn(
+              "flex h-8 shrink-0 select-none items-center gap-1.5 px-2.5",
+              solo && HOVER_REVEAL,
+            )}
+          >
             <TerminalIcon size={13} strokeWidth={1.5} className="shrink-0 text-muted" />
             {renaming ? (
               <InlineName

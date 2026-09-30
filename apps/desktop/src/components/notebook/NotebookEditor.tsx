@@ -1,3 +1,4 @@
+import type { FileRoot } from "@ai4s/shared";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -57,7 +58,7 @@ export function NotebookEditor({
   path: string;
   /** Folder tree `path` resolves in (default the active workspace). The
    *  kernel also runs with the notebook's own folder as cwd. */
-  root?: "workspace" | "base";
+  root?: FileRoot;
   /** Back navigation (full-page use). */
   onBack?: () => void;
   /** Close the pane (inspector use). */

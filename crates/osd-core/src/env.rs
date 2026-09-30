@@ -279,7 +279,7 @@ fn xdg_documents_dir() -> Option<PathBuf> {
     expanded.is_dir().then_some(expanded)
 }
 
-fn home() -> Result<PathBuf, String> {
+pub(crate) fn home() -> Result<PathBuf, String> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)

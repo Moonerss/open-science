@@ -9,12 +9,11 @@ import { isGatewayWeb } from "@/lib/webMode";
 /**
  * What this workbench can do, and what it runs on.
  *
- * The page is a LIBRARY, so it is laid out as one: a searchable list of every
- * skill and agent, in a grid, with the machine's toolchain as one quiet line
- * above it. It used to be four stacked cards of the same visual weight — a
- * permanent three-row install box at the top, then a seven-row checklist of
- * found/not-found, then two long single-column lists — which gave the rarest
- * action the most space and made finding one skill among thirty a scroll.
+ * Laid out as a settings-style list: a title with one short line under it,
+ * then each kind as a section of roomy rows (icon tile, name, one line of
+ * description). The toolchain sits last — a fact to glance at, not the reason
+ * anyone comes here. Earlier versions put a paragraph of path-laden small print
+ * above a dense two-column grid, and the page read as a wall of 12px text.
  */
 export function SkillsPage() {
   const { t } = useTranslation(["pages", "common"]);
@@ -30,7 +29,6 @@ export function SkillsPage() {
   const connected = status === "ready";
 
   const [query, setQuery] = useState("");
-  const [kind, setKind] = useState<"all" | "skill" | "agent">("all");
   const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
@@ -38,8 +36,6 @@ export function SkillsPage() {
     void detectTools();
   }, [connected, loadCatalog, detectTools]);
 
-  /** Skills and agents as one list: the reader is looking for a capability and
-   *  does not, at that moment, care which of the two kinds it is. */
   const entries = useMemo<Entry[]>(() => {
     const all: Entry[] = [
       ...skills.map((s) => ({
@@ -59,7 +55,6 @@ export function SkillsPage() {
     ];
     const needle = query.trim().toLowerCase();
     return all
-      .filter((e) => kind === "all" || e.kind === kind)
       .filter(
         (e) =>
           !needle ||
@@ -67,139 +62,119 @@ export function SkillsPage() {
           (e.description ?? "").toLowerCase().includes(needle),
       )
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [skills, agents, kind, query]);
+  }, [skills, agents, query]);
+  const skillRows = entries.filter((e) => e.kind === "skill");
+  const agentRows = entries.filter((e) => e.kind === "agent");
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl px-8 py-7">
-        <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="font-serif text-xl text-text">{t("skills.title")}</h1>
-          <p className="min-w-0 flex-1 truncate text-[13px] text-muted" title={summaryLine(t)}>
-            {summaryLine(t)}
-          </p>
+      <div className="mx-auto max-w-4xl px-10 py-10">
+        <header className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="font-serif text-2xl text-text">{t("skills.title")}</h1>
+            <p className="mt-1 text-[14px] text-muted">{t("skills.subtitle")}</p>
+          </div>
+          {connected && (
+            <label className="relative w-56">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
+              />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t("skills.search")}
+                aria-label={t("skills.search")}
+                className="h-9 w-full rounded-input border border-border bg-surface pl-8 pr-2 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/50"
+              />
+            </label>
+          )}
           <InstallSkill installing={installing} setInstalling={setInstalling} connected={connected} />
         </header>
 
-        {/* The toolchain, on one line. These are facts you glance at, not rows
-            you read: seven of them stacked full-width was a page of whitespace
-            for six words of information. */}
-        {!isGatewayWeb && tools.length === 0 && (
-          <p className="mt-4 text-[12px] text-muted">
-            {t("skills.environment.detectionUnavailable")}
-          </p>
-        )}
-        {!isGatewayWeb && tools.length > 0 && (
-          <div className="mt-4 flex flex-wrap items-center gap-1.5">
-            {tools.map((tool) => (
-              <span
-                key={tool.name}
-                title={
-                  tool.found
-                    ? (tool.version ?? t("skills.environment.found"))
-                    : t("skills.environment.notFound")
-                }
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px]",
-                  tool.found
-                    ? "border-border bg-surface text-text"
-                    : "border-dashed border-border bg-transparent text-muted",
-                )}
-              >
-                {tool.found ? (
-                  <Check size={11} className="shrink-0 text-ok" />
-                ) : (
-                  <X size={11} className="shrink-0 text-muted" />
-                )}
-                {tool.name}
-                {tool.found ? (
-                  tool.version && (
-                    <span className="font-mono text-[11px] text-muted">
-                      {shortVersion(tool.version)}
-                    </span>
-                  )
-                ) : (
-                  // Said, not implied: a dashed outline is a hint, and whether
-                  // the machine has R is not something to make the reader hover
-                  // for.
-                  <span className="text-[11px]">{t("skills.environment.notFound")}</span>
-                )}
-                {tool.managed && (
-                  <span className="rounded bg-surface-2 px-1 text-[10px] text-muted">
-                    {t("skills.environment.appManaged")}
-                  </span>
-                )}
-              </span>
-            ))}
-          </div>
-        )}
-        {/* What those chips mean for running code — short, and under them
-            rather than in a box of its own. */}
-        {!isGatewayWeb && tools.length > 0 && (
-          <p className="mt-2 text-[11px] leading-relaxed text-muted">
-            {t("skills.environment.note")}
-          </p>
-        )}
-
         {!connected ? (
-          <div className="mt-6 text-sm text-muted">
-            {t("skills.disconnected")}
-          </div>
+          <p className="mt-10 text-[14px] text-muted">{t("skills.disconnected")}</p>
+        ) : entries.length === 0 ? (
+          <p className="mt-10 text-[14px] text-muted">
+            {query ? t("skills.noMatch", { query }) : t("skills.skillsListSection.empty")}
+          </p>
         ) : (
           <>
-            <div className="mt-5 flex flex-wrap items-center gap-2">
-              <label className="relative min-w-[16rem] flex-1">
-                <Search
-                  size={14}
-                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
-                />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder={t("skills.search")}
-                  aria-label={t("skills.search")}
-                  className="h-8 w-full rounded-input border border-border bg-surface pl-8 pr-2 text-[13px] text-text outline-none placeholder:text-muted focus:border-accent/50"
-                />
-              </label>
-              <div role="radiogroup" aria-label={t("skills.filter")} className="flex gap-0.5 rounded-input bg-surface-2 p-0.5">
-                {/* eslint-disable i18next/no-literal-string -- filter ids, not UI copy */}
-                <FilterTab active={kind === "all"} onSelect={() => setKind("all")}>
-                  {t("skills.all", { count: skills.length + agents.length })}
-                </FilterTab>
-                <FilterTab active={kind === "skill"} onSelect={() => setKind("skill")}>
-                  {t("skills.skillsListSection.sectionTitle", { count: skills.length })}
-                </FilterTab>
-                <FilterTab active={kind === "agent"} onSelect={() => setKind("agent")}>
-                  {t("skills.agentsSection.sectionTitle", { count: agents.length })}
-                </FilterTab>
-                {/* eslint-enable i18next/no-literal-string */}
-              </div>
-            </div>
-
-            {entries.length === 0 ? (
-              <p className="mt-10 text-center text-sm text-muted">
-                {query ? t("skills.noMatch", { query }) : t("skills.skillsListSection.empty")}
-              </p>
-            ) : (
-              // Two columns on a wide window: thirty capabilities in one screen
-              // rather than thirty scrolls.
-              <div className="mt-3 grid gap-x-6 border-t border-border sm:grid-cols-2">
-                {entries.map((entry) => (
-                  <EntryCard key={`${entry.kind}:${entry.name}`} entry={entry} />
+            {skillRows.length > 0 && (
+              <Section title={t("skills.skillsListSection.heading")} count={skillRows.length}>
+                {skillRows.map((entry) => (
+                  <EntryRow key={`skill:${entry.name}`} entry={entry} />
                 ))}
-              </div>
+              </Section>
+            )}
+            {agentRows.length > 0 && (
+              <Section title={t("skills.agentsSection.heading")} count={agentRows.length}>
+                {agentRows.map((entry) => (
+                  <EntryRow key={`agent:${entry.name}`} entry={entry} />
+                ))}
+              </Section>
             )}
           </>
+        )}
+
+        {/* The toolchain, last: which runtimes the agent's shell will find. */}
+        {!isGatewayWeb && (
+          <Section title={t("skills.environment.sectionTitle")}>
+            {tools.length === 0 ? (
+              <p className="text-[14px] text-muted">{t("skills.environment.detectionUnavailable")}</p>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  {tools.map((tool) => (
+                    <span
+                      key={tool.name}
+                      title={
+                        tool.found
+                          ? (tool.version ?? t("skills.environment.found"))
+                          : t("skills.environment.notFound")
+                      }
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px]",
+                        tool.found
+                          ? "border-border bg-surface text-text"
+                          : "border-dashed border-border bg-transparent text-muted",
+                      )}
+                    >
+                      {tool.found ? (
+                        <Check size={12} className="shrink-0 text-ok" />
+                      ) : (
+                        <X size={12} className="shrink-0 text-muted" />
+                      )}
+                      {tool.name}
+                      {tool.found ? (
+                        tool.version && (
+                          <span className="font-mono text-[12px] text-muted">
+                            {shortVersion(tool.version)}
+                          </span>
+                        )
+                      ) : (
+                        // Said, not implied: whether the machine has R is not
+                        // something to make the reader hover for.
+                        <span>{t("skills.environment.notFound")}</span>
+                      )}
+                      {tool.managed && (
+                        <span className="rounded bg-surface-2 px-1 text-[11px] text-muted">
+                          {t("skills.environment.appManaged")}
+                        </span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-3 text-[13px] leading-relaxed text-muted">
+                  {t("skills.environment.note")}
+                </p>
+              </>
+            )}
+          </Section>
         )}
       </div>
     </div>
   );
-}
-
-/** The page's one-line summary, assembled from the two halves the translations
- *  keep apart (the filesystem path between them is not prose). */
-function summaryLine(t: (key: "skills.description.prefix" | "skills.description.suffix") => string): string {
-  // eslint-disable-next-line i18next/no-literal-string -- literal filesystem path, not prose
-  return `${t("skills.description.prefix")}.opencode/skills/${t("skills.description.suffix")}`;
 }
 
 interface Entry {
@@ -209,53 +184,51 @@ interface Entry {
   tag?: string;
 }
 
-function EntryCard({ entry }: { entry: Entry }) {
+function Section({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mt-10">
+      <h2 className="mb-3 flex items-baseline gap-2 text-[15px] font-medium text-text">
+        {title}
+        {count !== undefined && <span className="font-normal text-muted">{count}</span>}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+/** One capability: an icon tile, the name with where it came from, and one
+ *  line of description — the whole text on hover. */
+function EntryRow({ entry }: { entry: Entry }) {
   const { t } = useTranslation("pages");
   const label = entry.kind === "agent" ? agentModeLabel(entry.tag, t) : sourceLabel(entry.tag, t);
+  const Icon = entry.kind === "agent" ? Bot : Puzzle;
   return (
-    <article className="flex min-w-0 items-start gap-2.5 border-b border-border px-1 py-3">
-      {entry.kind === "agent" ? (
-        <Bot size={15} className="mt-0.5 shrink-0 text-muted" />
-      ) : (
-        <Puzzle size={15} className="mt-0.5 shrink-0 text-muted" />
-      )}
+    <article className="flex min-w-0 items-center gap-4 py-2.5" title={entry.description || undefined}>
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface">
+        <Icon size={18} strokeWidth={1.5} className="text-muted" />
+      </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <h3 className="min-w-0 flex-1 truncate text-[13px] font-medium text-text">{entry.name}</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="min-w-0 truncate text-[15px] text-text">{entry.name}</h3>
           {label && (
-            <span className="shrink-0 whitespace-nowrap rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted">
+            <span className="shrink-0 whitespace-nowrap rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] text-muted">
               {label}
             </span>
           )}
         </div>
-        <p className="line-clamp-2 text-[12px] leading-relaxed text-muted">{entry.description}</p>
+        {entry.description && (
+          <p className="mt-0.5 truncate text-[13px] text-muted">{entry.description}</p>
+        )}
       </div>
     </article>
-  );
-}
-
-function FilterTab({
-  active,
-  onSelect,
-  children,
-}: {
-  active: boolean;
-  onSelect: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      onClick={onSelect}
-      className={cn(
-        "whitespace-nowrap rounded-[5px] px-2.5 py-1 text-[12px] transition-colors",
-        active ? "bg-surface text-text shadow-sm" : "text-muted hover:text-text",
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -300,7 +273,7 @@ function InstallSkill({
         onClick={() => setOpen(true)}
         disabled={!connected}
         title={connected ? undefined : t("skills.install.hintDisconnected")}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-input border border-border bg-surface px-2.5 py-1.5 text-[13px] text-text hover:bg-surface-2 disabled:opacity-40"
+        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-input bg-text px-3 text-[13px] font-medium text-bg hover:opacity-90 disabled:opacity-40"
       >
         <Plus size={13} strokeWidth={1.5} />
         {t("skills.install.cta")}
@@ -309,7 +282,7 @@ function InstallSkill({
   }
 
   return (
-    <div className="mt-3 w-full rounded-card bg-surface-2 p-3">
+    <div className="w-full rounded-card bg-surface-2 p-3">
       <textarea
         autoFocus
         value={text}

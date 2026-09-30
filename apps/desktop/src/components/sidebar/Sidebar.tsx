@@ -77,8 +77,8 @@ interface Row {
   title: string;
   to: string;
   kind: "session" | "example";
-  /** The project this session belongs to, if any. Names the Screen a click
-   *  opens — "Screen 3" says nothing about what is in it. */
+  /** The project this session belongs to, if any — shown on the row and
+   *  matched by the search. */
   project?: string;
   /** That project's id — the project whose Screens a click opens it among. */
   projectId?: string;
@@ -272,7 +272,7 @@ export function Sidebar({ project }: { project: Project }) {
   const openProjectScreen = async (p: ProjectInfo) => {
     const leafId =
       !isMobile && !isGatewayWeb
-        ? useLayoutStore.getState().openInNewGroup(null, p.name, p.id)
+        ? useLayoutStore.getState().openInNewGroup(null, p.id)
         : null;
     await startDraftInWorkspace(p.path, leafId ? draftKeyFor(leafId) : undefined);
     navigate("/live");
@@ -457,7 +457,7 @@ export function Sidebar({ project }: { project: Project }) {
       // eslint-disable-next-line i18next/no-literal-string -- SplitDir enum, not UI copy
       layout.split("row", row.id);
     } else {
-      layout.openSessionEphemeral(row.id, row.project, row.projectId ?? DEFAULT_PROJECT);
+      layout.openSessionEphemeral(row.id, row.projectId ?? DEFAULT_PROJECT);
     }
     // The layout change alone is invisible from Skills/Runs/Files/…: those
     // routes render instead of the panes, so navigate to show the session.
@@ -686,21 +686,17 @@ export function Sidebar({ project }: { project: Project }) {
         {!inSettings && (
         <>
         <div className={css.logoRow}>
-          {/* Brand = home: clicking the logo/name returns to the main page. */}
-          <button
-            onClick={() => navigate("/live")}
-            aria-label={t("sidebar.home")}
-            title={t("sidebar.home")}
-            className={css.brand}
-          >
-            <span className={css.brandIdentity} aria-hidden="true">
+          {/* The brand only: not a control. As a "home" link it swapped the
+              conversation on screen for a blank new one. */}
+          <div className={css.brand}>
+            <span className={css.brandIdentity}>
               <span className={css.brandMark}>
                 <img src={logo} alt="" />
               </span>
               {/* eslint-disable-next-line i18next/no-literal-string -- product brand name, not translated across locales (see AGENTS.md) */}
               <span className={css.brandName}>Open Science</span>
             </span>
-          </button>
+          </div>
           {!overlayTitlebar && collapseToggle}
         </div>
 

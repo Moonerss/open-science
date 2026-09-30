@@ -59,7 +59,12 @@ import {
 import { InlineName } from "@/components/ui/InlineName";
 import { InteractionPrompt } from "@/components/thread/InteractionPrompt";
 import { InspectorShell } from "@/components/inspector/InspectorShell";
-import { MaximizePaneButton, PaneHeaderClearsLights, RightPane } from "@/components/inspector/RightPane";
+import {
+  HOVER_REVEAL,
+  MaximizePaneButton,
+  PaneHeaderClearsLights,
+  RightPane,
+} from "@/components/inspector/RightPane";
 import { SessionFilesPane } from "@/app/routes/FilesPage";
 import { RunsPane } from "@/app/routes/RunsPage";
 import { cn } from "@/lib/cn";
@@ -699,13 +704,16 @@ export function SessionView({
             // takes the place, and its × brings the conversation back. Hidden,
             // not unmounted — the width observer stays on this element.
             inspectorFillsPane ? "hidden" : "flex",
-            "shrink-0 select-none items-center border-faint",
+            // `group/header`: the controls on the right show on hover (below).
+            "group/header shrink-0 select-none items-center",
             // Solo keeps the roomier horizontal rhythm; the HEIGHT is the same
             // 32px either way. A 48px header under the 48px Screen strip spent
             // 96px of every window on chrome before a single message.
             solo ? "gap-2 px-6" : "gap-1 px-2.5",
-            eid && "border-b",
             !(sidebarCollapsed && asTitlebar) && "h-8",
+            // The Screen's only pane: the whole row waits for the pointer —
+            // unless it hosts the sidebar button, or has trouble to report.
+            solo && !chromeAsTitlebar && connected && displayStatus === "ready" && HOVER_REVEAL,
           )}
         >
           {showSidebarExpand && (
@@ -765,6 +773,16 @@ export function SessionView({
             />
           )}
           <div data-tauri-drag-region={asTitlebar || undefined} className="flex-1" />
+          {/* The pane's tools stay out of sight until the header is hovered or
+              focused — or while one of their menus is open, so it does not fade
+              from under the pointer. Touch screens cannot hover: always shown. */}
+          <div
+            className={cn(
+              "flex shrink-0 items-center gap-[inherit] opacity-0 transition-opacity duration-150",
+              "focus-within:opacity-100 group-hover/header:opacity-100",
+              "has-[[aria-expanded=true]]:opacity-100 [@media(hover:none)]:opacity-100",
+            )}
+          >
           {eid && (
             <button
               onClick={() => {
@@ -881,8 +899,6 @@ export function SessionView({
               )}
             </>
           )}
-          {/* The green "ready" dot is noise per pane — only surface trouble. */}
-          {displayStatus !== "ready" && <ConnBadge status={displayStatus} />}
           {!compactNotebooks && uniqueNotebooks.map((nb) => (
             <button
               key={nb.path}
@@ -950,6 +966,10 @@ export function SessionView({
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
           )}
+          </div>
+          {/* Trouble is never hidden: the green "ready" dot is noise per pane,
+              anything else shows whether or not the header is hovered. */}
+          {displayStatus !== "ready" && <ConnBadge status={displayStatus} />}
           {!connected && (
             <button
               onClick={connect}
@@ -1345,6 +1365,7 @@ function ZoomMenu({ zoom, onPick }: { zoom: number; onPick: (z: number) => void 
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
         className="rounded-md px-1 py-1 text-xs tabular-nums text-muted transition-colors hover:bg-surface-2 hover:text-text"
         title={t("group.zoom")}
         aria-label={t("group.zoom")}

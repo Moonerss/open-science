@@ -453,16 +453,16 @@ describe("FilePreviewInspector — the editor fills its pane", () => {
     expect(editor.closest(".p-3")).toBeNull();
   });
 
-  it("keeps the read-only view in its padded block", async () => {
+  it("lets the read-only view fill the pane, edge to edge", async () => {
     render(<FilePreviewInspector data={py} onClose={() => {}} />);
 
-    // A file being READ grows with its content inside the scrolling body —
-    // that box was right all along, and only the editor needed a real height.
-    // (Highlighting splits the source across spans, so the assertion is on the
-    // block, not on a text node.)
+    // A file being READ is the pane's surface: full height, no padded card
+    // floating over grey. (Highlighting splits the source across spans, so the
+    // assertion is on the block, not on a text node.)
     await waitFor(() => {
-      const padded = document.querySelector(".p-3");
-      expect(padded?.textContent).toContain("import numpy");
+      const surface = document.querySelector(".min-h-full");
+      expect(surface?.textContent).toContain("import numpy");
+      expect(document.querySelector(".p-3")).toBeNull();
     });
   });
 });

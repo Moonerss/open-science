@@ -355,6 +355,7 @@ function Leaf({
         <ContentPane
           content={leaf.content}
           leafId={leafId}
+          solo={solo}
           onClose={() =>
             contentNeedsConfirm(leaf) ? setConfirmClose(true) : closePane(leafId)
           }

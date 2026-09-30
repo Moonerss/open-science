@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useOpenSession } from "@/lib/useOpenSession";
 import { useTranslation } from "react-i18next";
 import {
   Check,
@@ -57,6 +58,7 @@ function RunsView({ sessionId }: { sessionId?: string }) {
   const [log, setLog] = useState<{ hash: string; text: string | null } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const navigate = useNavigate();
+  const openSession = useOpenSession();
   const [searchParams] = useSearchParams();
   const setComposerDraft = useUiStore((s) => s.setComposerDraft);
 
@@ -236,7 +238,7 @@ function RunsView({ sessionId }: { sessionId?: string }) {
                     open={expanded === r.runId}
                     onToggle={() => setExpanded((e) => (e === r.runId ? null : r.runId))}
                     onReproduce={() => reproduce(r)}
-                    onOpenConversation={r.sessionId ? () => navigate(`/live/${r.sessionId}`) : undefined}
+                    onOpenConversation={r.sessionId ? () => openSession(r.sessionId!) : undefined}
                     onCopy={() => copyCommand(r)}
                     copied={copied === r.runId}
                     log={log}

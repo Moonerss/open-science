@@ -37,13 +37,13 @@ describe("a panel opened in a tiled pane", () => {
     const close = await screen.findByRole("button", { name: "Close trajectory" });
     // The conversation header under the panel stays mounted (its width
     // observer stays on it) but is hidden; the other pane's header is not.
-    expect(first.parentElement).toHaveClass("hidden");
+    expect(first.closest("[class*='group/header']")).toHaveClass("hidden");
     const splits = screen.getAllByRole("button", { name: /^Split right/ });
     expect(splits.filter((b) => b.closest(".hidden"))).toHaveLength(1);
     expect(splits.filter((b) => !b.closest(".hidden"))).toHaveLength(1);
     // The panel's own header is the one bar left, and it closes back to the chat.
     expect(within(close.parentElement!).getByText("Trajectory")).toBeInTheDocument();
     await userEvent.click(close);
-    expect(first.parentElement).not.toHaveClass("hidden");
+    expect(first.closest("[class*='group/header']")).not.toHaveClass("hidden");
   });
 });

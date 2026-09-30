@@ -4587,7 +4587,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
       // middle of — an install is a new piece of work, not a hijack.
       // Filed under Default, like the session itself: an install belongs to
       // no project.
-      useLayoutStore.getState().openInNewGroup(id, title, DEFAULT_PROJECT);
+      useLayoutStore.getState().openInNewGroup(id, DEFAULT_PROJECT);
       // The turn goes through the normal send path (echo, running lock, error
       // line, stream folding) — hand-rolling the POST left the pane with no
       // message, no spinner and no way to tell a failure from a slow model.

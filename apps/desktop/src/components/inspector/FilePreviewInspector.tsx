@@ -692,13 +692,11 @@ function Body({
       );
     }
     // A document reads as a page: white paper, black text, whatever the app
-    // theme — the same document-neutral canvas the Office previews use.
+    // theme. The pane itself is the page — edge to edge, full height, no grey
+    // margin or shadow framing a card inside it.
     return text !== null ? (
-      // `flex` + `flex-1` so the paper fills the pane's height: a three-word
-      // note rendered as a thin white strip floating in grey, which reads as a
-      // broken box rather than as a page.
-      <div className="flex min-h-full flex-col px-6 py-8">
-        <div className="mx-auto w-full max-w-[760px] flex-1 rounded-sm bg-white px-12 py-11 shadow-[0_1px_4px_rgba(0,0,0,.25)] max-sm:px-6 max-sm:py-7">
+      <div className="min-h-full bg-white">
+        <div className="mx-auto w-full max-w-[760px] px-12 py-11 max-sm:px-6 max-sm:py-7">
           <MarkdownViewer variant="document">{text}</MarkdownViewer>
         </div>
       </div>
@@ -822,11 +820,12 @@ function SourceView({
 }) {
   const { t } = useTranslation(["inspector", "common"]);
   const handle = useRef<CodeEditorHandle | null>(null);
-  // Read-only: a block that grows with the file, inside the scrolling body.
+  // Read-only: the pane is the code surface — full height, edge to edge, so a
+  // six-line file is not a floating card over grey.
   if (draft === null) {
     return (
-      <div className="p-3">
-        <CodeViewer code={text} language={language} />
+      <div className="flex min-h-full flex-col">
+        <CodeViewer code={text} language={language} className="flex-1 rounded-none" />
       </div>
     );
   }

@@ -368,7 +368,8 @@ function initialSessionId(): string | null {
  */
 export interface LayoutGroup {
   id: string;
-  /** User label; "" means show the index-based default ("Screen N"). */
+  /** A name the USER gave this Screen; "" means derive one (see groupLabel).
+   *  Nothing but a rename writes it, so a derived label never freezes. */
   name: string;
   tree: PaneNode | null;
   focusedLeafId: string | null;
@@ -591,11 +592,10 @@ interface LayoutState {
   ephemeralGroupId: string | null;
   /** Open `sessionId` full-screen in the tentative screen — reusing the current
    *  tentative screen if one exists, else opening a new one. The sidebar-click
-   *  entry (#3). `name` labels the screen it opens (the session's project), so
-   *  the tab strip says where the work is rather than "Screen 3". `projectId`
-   *  is the session's project (default: the active one); the Screen lands
-   *  there, so opening a session also shows its project. */
-  openSessionEphemeral: (sessionId: string, name?: string, projectId?: string) => void;
+   *  entry (#3). `projectId` is the session's project (default: the active
+   *  one); the Screen lands there, so opening a session also shows its
+   *  project. */
+  openSessionEphemeral: (sessionId: string, projectId?: string) => void;
   /** Pin the tentative screen (clear `ephemeralGroupId`) — called by any real
    *  interaction with it. No-op when there is none. */
   pinEphemeral: () => void;
@@ -623,12 +623,12 @@ interface LayoutState {
    *  running: it is still the terminal's LAST session, offered from its menu. */
   recordTerminal: (leafId: string, probe: TerminalProbe) => void;
   /** Open ONE new pane in its own Screen — bound to `sessionId`, or a draft when
-   *  null — activate and focus it, optionally naming the Screen. Every "new
+   *  null — activate and focus it. Every "new
    *  session" entry point goes through this: binding the new work onto the
    *  focused pane took over whatever conversation the user had there. An empty
    *  active Screen is filled instead of stacking a second empty one beside it.
    *  Returns the new leaf's id. */
-  openInNewGroup: (sessionId: string | null, name?: string, projectId?: string) => string;
+  openInNewGroup: (sessionId: string | null, projectId?: string) => string;
   /** Close a group; a project never drops below one Screen (its last Screen is
    *  emptied instead). */
   closeGroup: (groupId: string) => void;
@@ -743,7 +743,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
     zoomedLeafId: null,
     ephemeralGroupId: null,
 
-    openSessionEphemeral: (sessionId, name = "", projectId) =>
+    openSessionEphemeral: (sessionId, projectId) =>
       set((s) => {
         const project = projectId ?? selectActiveProjectId(s);
         // Already on screen somewhere? Go there — clicking a session in the
@@ -783,7 +783,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
           // left behind in the old project is exactly the pile-up #78 was.
           const groups = s.groups.map((g) =>
             g.id === reusable
-              ? { ...g, name, projectId: project, tree: leaf, focusedLeafId: leaf.id, zoomedLeafId: null }
+              ? { ...g, name: "", projectId: project, tree: leaf, focusedLeafId: leaf.id, zoomedLeafId: null }
               : g,
           );
           persist(groups, reusable);
@@ -799,7 +799,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
         // Open a fresh tentative screen.
         const g: LayoutGroup = {
           id: genGroupId(),
-          name,
+          name: "",
           projectId: project,
           tree: leaf,
           focusedLeafId: leaf.id,
@@ -841,7 +841,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
       return g.id;
     },
 
-    openInNewGroup: (sessionId, name, projectId) => {
+    openInNewGroup: (sessionId, projectId) => {
       const leaf = makeLeaf(sessionId);
       set((s) => {
         const project = projectId ?? selectActiveProjectId(s);
@@ -855,9 +855,9 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
             : undefined) ?? projectGroups(s.groups, project).find((g) => !g.tree);
         const groups = empty
           ? s.groups.map((g) =>
-              g.id === empty.id ? { ...g, projectId: project, ...(name ? { name } : {}), ...active } : g,
+              g.id === empty.id ? { ...g, projectId: project, ...active } : g,
             )
-          : [...s.groups, { id: genGroupId(), name: name ?? "", projectId: project, ...active }];
+          : [...s.groups, { id: genGroupId(), name: "", projectId: project, ...active }];
         const activeGroupId = empty ? empty.id : groups[groups.length - 1].id;
         persist(groups, activeGroupId);
         // New work pins the tentative screen: the next sidebar click opens its
@@ -908,7 +908,12 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
       persist(get().groups, get().activeGroupId);
     },
     renameGroup: (groupId, name) => {
-      set((s) => ({ groups: s.groups.map((g) => (g.id === groupId ? { ...g, name } : g)) }));
+      // Naming the tentative Screen keeps it: reusing it for the next preview
+      // would throw away the name the user just gave it.
+      set((s) => ({
+        groups: s.groups.map((g) => (g.id === groupId ? { ...g, name } : g)),
+        ...(s.ephemeralGroupId === groupId ? { ephemeralGroupId: null } : {}),
+      }));
       persist(get().groups, get().activeGroupId);
     },
     setActiveGroup: (groupId) =>
@@ -1327,22 +1332,21 @@ export function groupLabel(
   index: number,
   fallback: (n: number) => string,
   describe?: (content: PaneContent) => string | null,
+  sessionTitle?: (sessionId: string) => string | null,
 ): string {
   const named = group.name.trim();
   if (named) return named;
-  // A Screen opened as a Terminal should say "Terminal", not "Screen 4". The
-  // description is derived rather than stored, so it follows the pane: the
-  // document pane swapping files renames its Screen with it.
-  const content = describe && groupContent(group);
-  return (content && describe(content)) || fallback(index + 1);
-}
-
-/** What an unnamed Screen is showing: the first pane that holds something.
- *  Null when the Screen is empty or holds only conversations, which have their
- *  own names elsewhere. */
-export function groupContent(group: LayoutGroup): PaneContent | null {
-  if (!group.tree) return null;
-  return leaves(group.tree).find((leaf) => leaf.content)?.content ?? null;
+  // Otherwise the Screen says what its first pane holds: "Terminal", a file's
+  // name, or the conversation's title once it has one — not "Screen 4". The
+  // label is derived rather than stored, so it follows the pane: a document
+  // pane swapping files, or a session getting its title, renames the Screen.
+  const first = group.tree ? leaves(group.tree).find((l) => l.content || l.sessionId) : undefined;
+  const derived = first?.content
+    ? describe?.(first.content)
+    : first?.sessionId
+      ? sessionTitle?.(first.sessionId)
+      : null;
+  return derived || fallback(index + 1);
 }
 
 // Remember, per project, the Screen on display — see LAST_SCREEN_KEY.
