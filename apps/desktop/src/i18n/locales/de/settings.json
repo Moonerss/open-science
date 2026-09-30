@@ -20,7 +20,8 @@
     "theme": {
       "light": "Hell",
       "warm": "Warm",
-      "dark": "Dunkel"
+      "dark": "Dunkel",
+      "system": "System"
     },
     "zoom": {
       "label": "Zoom",
@@ -28,6 +29,13 @@
       "in": "Vergrößern",
       "out": "Verkleinern",
       "reset": "Zurücksetzen"
+    },
+    "fontSize": {
+      "title": "Schriftgröße",
+      "description": "Wirkt nur auf den Gesprächsinhalt",
+      "unit": "px",
+      "increase": "Schrift vergrößern",
+      "decrease": "Schrift verkleinern"
     }
   },
   "language": {

@@ -120,6 +120,13 @@ export function renderBlock(
 // list — including groupToolBlocks — is skipped. When `blocks` does change, the
 // per-block memo above ensures only the touched rows actually re-render (#34).
 // Requires callers to pass a stable `handlers` reference (see LiveSessionPage).
+/** The thread as BlockList renders it: scratch files dropped (the answer
+ *  already chips them) and reasoning dropped. Shared with the turn navigator,
+ *  so its marks line up one-to-one with the rendered turns. */
+export function shapeThread(blocks: ThreadBlock[]): ThreadBlock[] {
+  return dropReasoning(dropProcessArtifacts(blocks));
+}
+
 export const BlockList = memo(function BlockList({
   blocks,
   handlers,
@@ -150,7 +157,7 @@ export const BlockList = memo(function BlockList({
   // removes blocks, so the streaming thought is resolved to a BLOCK here and
   // compared by identity below. An index would point at whatever shifted into
   // that slot — silently, since a wrong index is still a valid one.
-  const shaped = dropReasoning(dropProcessArtifacts(blocks));
+  const shaped = shapeThread(blocks);
   const renderOne = (block: ThreadBlock, key: number) =>
     renderBlock(block, key, handlers, undefined, workspaceDirectory, contextLimit);
   const renderRun = (run: ThreadBlock[], offset: number) =>
@@ -171,11 +178,12 @@ export const BlockList = memo(function BlockList({
   let offset = 0;
   return (
     <>
-      {splitTurns(shaped).map((turn) => {
+      {splitTurns(shaped).map((turn, turnIndex) => {
         const at = offset;
         offset = cursorAfter(turn, at) + turn.answer.length;
         return (
-          <div key={at} className="flex flex-col gap-4">
+          // `data-turn` is the anchor the turn navigator scrolls to.
+          <div key={at} data-turn={turnIndex} className="flex flex-col gap-4">
             {turn.lead.map((b, i) => renderOne(b, at + i))}
             {(() => {
               const done = isTurnDone(turn);

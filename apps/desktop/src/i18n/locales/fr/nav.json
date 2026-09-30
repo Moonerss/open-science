@@ -5,7 +5,12 @@
     "expand": "Développer la barre latérale",
     "expandTitle": "Développer la barre latérale ({{shortcut}})",
     "settings": "Paramètres",
-    "home": "Accueil"
+    "home": "Accueil",
+    "searchAria": "Rechercher des sessions",
+    "searchPlaceholder": "Rechercher un nom de session",
+    "searchClear": "Effacer la recherche",
+    "searchResultsAria": "Résultats de recherche",
+    "searchNoMatches": "Aucune session correspondante"
   },
   "items": {
     "new": "Nouveau",
@@ -76,6 +81,8 @@
     "showArchived": "Afficher les archivées",
     "archivedBadge": "archivée",
     "archive": "Archiver",
+    "archiveTitle": "Archiver cette session ?",
+    "archiveBody": "« {{title}} » quitte la barre latérale. Rien n’est supprimé : retrouvez-la dans Toutes les sessions → Afficher les archivées, où Restaurer la fait revenir.",
     "restore": "Restaurer",
     "loadMore": "Charger plus",
     "loading": "Chargement…",

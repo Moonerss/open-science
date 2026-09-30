@@ -282,6 +282,20 @@
         "default_other": "führte {{count}} Schritte aus"
       },
       "failedCount": "{{count}} fehlgeschlagen"
+    },
+    "process": {
+      "thinking": "Analyse abgeschlossen",
+      "read": "Dateien gelesen",
+      "write": "Dateien geschrieben",
+      "search": "Code durchsucht",
+      "edit": "Dateien bearbeitet",
+      "commands": "Befehle ausgeführt",
+      "webFetch": "Webseiten besucht",
+      "tools": "Werkzeuge aufgerufen",
+      "joinTwo": "{{first}} und {{second}}",
+      "comma": ", ",
+      "sharedPrefix": "",
+      "more": "{{title}} usw."
     }
   },
   "artifact": {
@@ -347,8 +361,8 @@
     "allowOnce": "Einmal erlauben"
   },
   "turn": {
-    "worked": "Gearbeitet",
-    "workedFor": "Gearbeitet: {{duration}}"
+    "worked": "Erledigt",
+    "workedFor": "Dauer {{duration}}"
   },
   "reasoning": {
     "thinking": "Denkt nach…",
@@ -524,5 +538,40 @@
     "close": "Suche schließen",
     "none": "keine Treffer",
     "find": "Suchen…"
+  },
+  "turnNav": {
+    "label": "Runden-Navigation",
+    "jump": "Zu Runde {{turn}} springen",
+    "turn": "Runde {{turn}}"
+  },
+  "trajectory": {
+    "title": "Verlauf",
+    "toggle": "Verlauf — jeder Schritt dieser Unterhaltung",
+    "duration": "Dauer",
+    "useActual": "Tatsächliche Dauer",
+    "useEqual": "Gleiche Breite",
+    "turns": "Runden",
+    "expandTurns": "Runden aufklappen",
+    "collapseTurns": "Runden zuklappen",
+    "calls": "Aufrufe",
+    "expandCalls": "Aufrufe aufklappen",
+    "collapseCalls": "Aufrufe zuklappen",
+    "search": "Suchen",
+    "user": "NUTZER",
+    "assistant": "ASSISTENT",
+    "tool": "TOOL",
+    "message": "NACHRICHT",
+    "system": "SYSTEM",
+    "compacted": "KOMPRIMIERT",
+    "input": "Eingabe",
+    "model": "Modell",
+    "tools": "Tools",
+    "turn": "Runde {{n}}",
+    "noOutput": "keine Ausgabe",
+    "empty": "Noch keine Schritte.",
+    "noMatch": "Keine passenden Schritte.",
+    "steps_one": "{{count}} Schritt",
+    "steps_other": "{{count}} Schritte",
+    "close": "Verlauf schließen"
   }
 }

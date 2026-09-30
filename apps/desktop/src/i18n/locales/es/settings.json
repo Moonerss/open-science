@@ -20,7 +20,8 @@
     "theme": {
       "light": "Claro",
       "warm": "Cálido",
-      "dark": "Oscuro"
+      "dark": "Oscuro",
+      "system": "Sistema"
     },
     "zoom": {
       "label": "Zoom",
@@ -28,6 +29,13 @@
       "in": "Acercar",
       "out": "Alejar",
       "reset": "Restablecer"
+    },
+    "fontSize": {
+      "title": "Tamaño de letra",
+      "description": "Solo afecta al contenido de la conversación",
+      "unit": "px",
+      "increase": "Aumentar tamaño",
+      "decrease": "Reducir tamaño"
     }
   },
   "language": {

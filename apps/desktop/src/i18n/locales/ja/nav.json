@@ -5,7 +5,12 @@
     "expand": "サイドバーを展開する",
     "expandTitle": "サイドバーを展開する ({{shortcut}})",
     "settings": "設定",
-    "home": "ホームへ戻る"
+    "home": "ホームへ戻る",
+    "searchAria": "セッションを検索",
+    "searchPlaceholder": "セッション名を検索",
+    "searchClear": "検索をクリア",
+    "searchResultsAria": "検索結果",
+    "searchNoMatches": "一致するセッションはありません"
   },
   "items": {
     "new": "新規",
@@ -76,6 +81,8 @@
     "showArchived": "アーカイブ済みを表示",
     "archivedBadge": "アーカイブ済み",
     "archive": "アーカイブ",
+    "archiveTitle": "このセッションをアーカイブしますか？",
+    "archiveBody": "「{{title}}」はサイドバーから外れます。削除はされません。「すべてのセッション」で「アーカイブ済みを表示」をオンにすると見つかり、「元に戻す」で戻せます。",
     "restore": "元に戻す",
     "loadMore": "さらに読み込む",
     "loading": "読み込み中…",

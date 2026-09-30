@@ -84,28 +84,38 @@ describe("groupToolBlocks", () => {
         blocks={[tool({}), tool({ status: "failed", output: "404 not found" })]}
       />,
     );
-    expect(screen.getByText(/2 commands/)).toBeInTheDocument();
+    expect(screen.getByText("Ran commands")).toBeInTheDocument();
     expect(screen.getByText(/1 failed/)).toBeInTheDocument();
   });
 });
 
 describe("summarizeGroup", () => {
-  it("counts per verb in first-seen order, capitalized", () => {
+  // DeepSeek Harness's processTitle: categories without counts, most frequent
+  // first, joined "X and y"; three by commas; ", etc." past three.
+  it("names categories by frequency, without counts", () => {
     expect(
       summarizeGroup([
-        tool({}),
-        tool({}),
         tool({ verb: "Created", tool: "write" }),
         tool({}),
+        tool({}),
+        tool({}),
       ]),
-    ).toBe("Ran 3 commands, created a file");
+    ).toBe("Ran commands and wrote files");
+  });
+
+  it("lists three categories, then trails off", () => {
+    const three = [tool({}), tool({ verb: "Read" }), tool({ verb: "Edited" })];
+    expect(summarizeGroup(three)).toBe("Ran commands, read files, edited files");
+    expect(summarizeGroup([...three, tool({ verb: "Fetched" })])).toBe(
+      "Ran commands, read files, edited files, etc.",
+    );
   });
 });
 
 describe("ToolGroup", () => {
   it("collapses a settled group to its summary; expands on click", () => {
     render(<ToolGroup blocks={[tool({ title: "pwd" }), tool({ title: "ls" })]} />);
-    const summary = screen.getByRole("button", { name: /Ran 2 commands/ });
+    const summary = screen.getByRole("button", { name: /Ran commands/ });
     expect(summary).toBeInTheDocument();
     fireEvent.click(summary);
     expect(screen.getByText("pwd")).toBeInTheDocument();
@@ -258,8 +268,6 @@ describe("the summary row's left edge", () => {
     );
     const summary = container.querySelector("button")!;
     expect(summary).not.toHaveClass("px-2");
-    // The highlight still spans the whole column — only the content was inset.
-    expect(summary).toHaveClass("w-full");
   });
 });
 

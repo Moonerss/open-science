@@ -20,7 +20,8 @@
     "theme": {
       "light": "라이트",
       "warm": "웜",
-      "dark": "다크"
+      "dark": "다크",
+      "system": "시스템"
     },
     "zoom": {
       "label": "확대/축소",
@@ -28,6 +29,13 @@
       "in": "확대",
       "out": "축소",
       "reset": "초기화"
+    },
+    "fontSize": {
+      "title": "글자 크기",
+      "description": "대화 내용에만 적용됩니다",
+      "unit": "px",
+      "increase": "글자 크게",
+      "decrease": "글자 작게"
     }
   },
   "language": {

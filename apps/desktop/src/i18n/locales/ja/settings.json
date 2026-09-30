@@ -20,7 +20,8 @@
     "theme": {
       "light": "ライト",
       "warm": "ウォーム",
-      "dark": "ダーク"
+      "dark": "ダーク",
+      "system": "システム"
     },
     "zoom": {
       "label": "ズーム",
@@ -28,6 +29,13 @@
       "in": "拡大",
       "out": "縮小",
       "reset": "リセット"
+    },
+    "fontSize": {
+      "title": "文字サイズ",
+      "description": "会話内容にのみ適用されます",
+      "unit": "px",
+      "increase": "文字を大きく",
+      "decrease": "文字を小さく"
     }
   },
   "language": {

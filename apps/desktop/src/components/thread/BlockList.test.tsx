@@ -125,12 +125,12 @@ describe("BlockList · a finished turn folds its work", () => {
     expect(screen.queryByText("python3 run.py")).not.toBeInTheDocument();
     // The line reports the span of the work it hides — not the whole turn,
     // since the answer's own generation is not part of what folded.
-    expect(await screen.findByRole("button", { name: /Worked for 2s/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Took 2s/ })).toBeInTheDocument();
   });
 
   it("brings the work back on a click", async () => {
     render(<BlockList blocks={done} />);
-    await userEvent.click(screen.getByRole("button", { name: /Worked for 2s/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Took 2s/ }));
     expect(screen.getByText(/simulate the dataset/)).toBeInTheDocument();
   });
 

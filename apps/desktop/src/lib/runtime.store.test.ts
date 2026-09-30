@@ -1792,10 +1792,10 @@ describe("per-session right pane", () => {
     useRuntimeStore.setState({ currentId: "ses_1" });
     useRuntimeStore.getState().openArtifact(artifact("report.pdf"));
     useRuntimeStore.getState().setShowFiles(true);
-    expect(useRuntimeStore.getState().panes["ses_1"]).toEqual({ artifact: null, showFiles: true, showRuns: false, showAgents: false });
+    expect(useRuntimeStore.getState().panes["ses_1"]).toEqual({ artifact: null, showFiles: true, showRuns: false, showAgents: false, showTrajectory: false });
     // Opening Runs closes Files; opening an artifact closes Runs.
     useRuntimeStore.getState().setShowRuns(true);
-    expect(useRuntimeStore.getState().panes["ses_1"]).toEqual({ artifact: null, showFiles: false, showRuns: true, showAgents: false });
+    expect(useRuntimeStore.getState().panes["ses_1"]).toEqual({ artifact: null, showFiles: false, showRuns: true, showAgents: false, showTrajectory: false });
     useRuntimeStore.getState().openArtifact(artifact("report.pdf"));
     const p = useRuntimeStore.getState().panes["ses_1"];
     expect(p?.showFiles).toBe(false);

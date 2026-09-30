@@ -282,6 +282,20 @@
         "default_other": "ran {{count}} steps"
       },
       "failedCount": "{{count}} failed"
+    },
+    "process": {
+      "thinking": "Analysis completed",
+      "read": "Read files",
+      "write": "Wrote files",
+      "search": "Searched code",
+      "edit": "Edited files",
+      "commands": "Ran commands",
+      "webFetch": "Visited web pages",
+      "tools": "Called tools",
+      "joinTwo": "{{first}} and {{second}}",
+      "comma": ", ",
+      "sharedPrefix": "",
+      "more": "{{title}}, etc."
     }
   },
   "artifact": {
@@ -348,7 +362,7 @@
   },
   "turn": {
     "worked": "Worked",
-    "workedFor": "Worked for {{duration}}"
+    "workedFor": "Took {{duration}}"
   },
   "reasoning": {
     "thinking": "Thinking…",
@@ -524,5 +538,40 @@
     "close": "Close find",
     "none": "no results",
     "find": "Find…"
+  },
+  "turnNav": {
+    "label": "Turn navigation",
+    "jump": "Jump to turn {{turn}}",
+    "turn": "Turn {{turn}}"
+  },
+  "trajectory": {
+    "title": "Trajectory",
+    "toggle": "Trajectory — every step of this conversation",
+    "duration": "Duration",
+    "useActual": "Use actual duration",
+    "useEqual": "Use equal-width operations",
+    "turns": "Turns",
+    "expandTurns": "Expand turns",
+    "collapseTurns": "Collapse turns",
+    "calls": "Calls",
+    "expandCalls": "Expand calls",
+    "collapseCalls": "Collapse calls",
+    "search": "Search",
+    "user": "USER",
+    "assistant": "ASSISTANT",
+    "tool": "TOOL",
+    "message": "MESSAGE",
+    "system": "SYSTEM",
+    "compacted": "COMPACTED",
+    "input": "Input",
+    "model": "Model",
+    "tools": "Tools",
+    "turn": "Turn {{n}}",
+    "noOutput": "no output",
+    "empty": "No steps yet.",
+    "noMatch": "No steps match.",
+    "steps_one": "{{count}} step",
+    "steps_other": "{{count}} steps",
+    "close": "Close trajectory"
   }
 }

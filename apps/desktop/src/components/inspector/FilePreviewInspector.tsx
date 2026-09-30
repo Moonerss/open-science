@@ -955,7 +955,7 @@ export function PreviewError({
   if (!tooLarge) return <div className="p-4 text-sm text-muted">{error}</div>;
   return (
     <div className="p-4">
-      <div className="rounded-card border border-border bg-surface p-4 text-sm text-muted">
+      <div className="text-sm text-muted">
         <div className="mb-1 font-medium text-text">{t("filePreview.tooLarge", { filename })}</div>
         <p className="mb-3">{t("filePreview.tooLargeBody")}</p>
         <div className="flex flex-wrap gap-2">
@@ -1009,7 +1009,7 @@ function LargeFilePointerPanel({ p }: { p: LargeFilePointer }) {
   if (p.samples?.length) rows.push([t("filePreview.pointer.samples"), p.samples.join(", ")]);
 
   return (
-    <div className="mt-3 rounded-input border border-border bg-surface-2 p-3">
+    <div className="mt-3 rounded-input bg-surface-2 p-3">
       {p.hint && <div className="mb-2 text-[13px] text-text">{p.hint}</div>}
       {rows.length > 0 && (
         <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-[12.5px]">

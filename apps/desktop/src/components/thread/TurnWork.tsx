@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { IconChevronDownOutlineRegular } from "@/components/icons/dsh";
 import { useTranslation } from "react-i18next";
-import { cn } from "@/lib/cn";
 import { fmtDuration } from "./ToolGroup";
+import css from "./TurnWork.module.css";
 
 /**
  * A finished turn's work, folded behind one line.
  *
- * `Worked for 59m 3s ›` — the ask and the answer stay, an hour of narration and
+ * `Took 59m 3s ⌄` (DeepSeek Harness's turn-process line) — the ask and the answer stay, an hour of narration and
  * commands goes behind it, and a click brings it back. It is the fold Codex puts
  * between a question and its result, and the reason a long session reads as a
  * conversation instead of a log.
@@ -42,23 +42,17 @@ export function TurnWork({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="group flex w-full items-center gap-1.5 text-left text-[13.5px] text-muted hover:text-text"
+        data-open={open || undefined}
+        className={css.root}
       >
-        <span>
+        <span className={css.label}>
           {durationMs === null
             ? t("turn.worked")
             : t("turn.workedFor", { duration: fmtDuration(durationMs) })}
         </span>
-        <ChevronRight
-          size={14}
-          strokeWidth={1.5}
-          className={cn("shrink-0 transition-transform duration-200", open && "rotate-90")}
-        />
+        <IconChevronDownOutlineRegular className={css.chevron} />
       </button>
       {open && <div className="flex flex-col gap-4">{children}</div>}
-      {/* The rule sits under the fold whether it is open or shut, so the answer
-          below always has the same separation from the work above it. */}
-      <hr className="border-faint" />
     </div>
   );
 }

@@ -142,7 +142,7 @@ function SubagentRow({
   }, [focusNonce]);
   const childId = row.childSessionId;
   return (
-    <li ref={ref} className="rounded-card border border-border bg-surface-2">
+    <li ref={ref} className="rounded-card bg-surface-2">
       {/* The WHOLE row toggles, not just the title: aiming at the words was a
           target most people miss, and clicking the icon or the elapsed time
           looked like the row simply did not respond. */}

@@ -5,7 +5,12 @@
     "expand": "Expandir barra lateral",
     "expandTitle": "Expandir barra lateral ({{shortcut}})",
     "settings": "Configuración",
-    "home": "Inicio"
+    "home": "Inicio",
+    "searchAria": "Buscar sesiones",
+    "searchPlaceholder": "Buscar nombres de sesión",
+    "searchClear": "Borrar búsqueda",
+    "searchResultsAria": "Resultados de búsqueda",
+    "searchNoMatches": "No hay sesiones que coincidan"
   },
   "items": {
     "new": "Nuevo",
@@ -76,6 +81,8 @@
     "showArchived": "Mostrar archivadas",
     "archivedBadge": "archivada",
     "archive": "Archivar",
+    "archiveTitle": "¿Archivar esta sesión?",
+    "archiveBody": "«{{title}}» sale de la barra lateral. No se borra nada: la encontrarás en Todas las sesiones → Mostrar archivadas, donde Restaurar la devuelve.",
     "restore": "Restaurar",
     "loadMore": "Cargar más",
     "loading": "Cargando…",

@@ -104,7 +104,7 @@ export function NotebookInspector({
             {cell.output && (
               <div className="mt-2">
                 <div className="mb-1 text-xs text-muted">{t("notebook.outputLabel")}</div>
-                <pre className="whitespace-pre-wrap rounded-input border border-border bg-surface-2 p-3 font-mono text-[12.5px] text-text">
+                <pre className="whitespace-pre-wrap rounded-input bg-surface-2 p-3 font-mono text-[12.5px] text-text">
                   {cell.output}
                 </pre>
               </div>

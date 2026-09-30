@@ -20,7 +20,8 @@
     "theme": {
       "light": "浅色",
       "warm": "暖色",
-      "dark": "深色"
+      "dark": "深色",
+      "system": "跟随系统"
     },
     "zoom": {
       "label": "缩放",
@@ -28,6 +29,13 @@
       "in": "放大",
       "out": "缩小",
       "reset": "复原"
+    },
+    "fontSize": {
+      "title": "字号大小",
+      "description": "仅影响会话内容的字号",
+      "unit": "px",
+      "increase": "增大字号",
+      "decrease": "减小字号"
     }
   },
   "language": {

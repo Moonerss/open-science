@@ -1,5 +1,13 @@
 # Progress
 
+2026-09-29 · feat(ui): 按 DeepSeek Harness（MIT）六项移植。① 对话右侧轮次导航条（刻度/悬停预览问答/点击跳转/当前轮高亮，未虚拟化，窄于 600px 隐藏）；② 侧栏 Projects 标题行内联搜索（按会话名/项目名过滤，平铺结果）；③ 侧栏整体改 DSH 外壳与 1px 图标：整套 DSH 图标模块搬入 components/icons/dsh，DSH 设计变量映射到本应用三套主题（index.css token 层），侧栏样式搬 DSH CSS module；④ 执行过程：外层「Took Xm ⌄」+0.5px 细线，工具组标题改 DSH 分类短语（无次数、按频次前三类，zh 共享「已」前缀），图标按主类，展开体限高滚动；⑤ Trajectory：session 头部文件夹旁图标按钮开右侧面板（Duration/Turns/Calls/搜索、Input·Model·Tools 三泳道、USER/ASSISTANT/TOOL 标签、命令→结果），基于现有 thread 数据重写而非搬 DSH 事件投影；⑥ 外观：Light/Warm/Dark/System 四卡（新增跟随系统）+ 对话字号步进器（12–20px，只缩放对话内容）。tsc、eslint、1663 前端测试通过；浏览器逐项截图核过，待实机验收。
+
+2026-09-28 10:20 · fix(sidebar): 归档改为先确认，确认框写明去向（全部会话 → 显示已归档 → 恢复），7 种语言文案按各语言界面实际标签核对；右键菜单的归档同走此确认。项目下的 session 去掉树形缩进，标题与项目名对齐（8+16+6=30px），空提示与「全部会话」行同步对齐。tsc、eslint、1662 前端测试通过。
+
+2026-09-28 07:40 · feat(sidebar): 项目行与 session 行照搬 DeepSeek Harness（MIT，图标 SVG 与标题滚动逻辑注明出处）。项目行静止时只显示文件夹+名字，hover 时文件夹换成展开三角、右侧出新建会话按钮（去掉常驻箭头与会话计数，imported 徽标保留）；session 行静止时显示「标题 + 相对时间」，hover 时时间换成 … / 归档 / 删除三个按钮，超长标题匀速滚动、两端渐隐；… 打开与右键同一份菜单。OSD 无 session 置顶，第三个按钮用删除代替 DSH 的置顶。tsc、eslint、1662 前端测试通过，浏览器实测三种 hover 态，待实机验收。
+
+2026-09-28 03:10 · style(ui): 页面/面板内的内容容器去掉描边卡片。规则：浮层、输入框、可点卡片保留边框；列表改分隔线行（Notebooks、Skills、Provenance、Workflow starters），空状态改纯文字，图/表/输出去外框（聊天 Figure/DataTable/RunningJobs、notebook 输出、TablePreview、CodeViewer），提示类改 surface-2 底色不描边（Reviewer、工具失败行、Compaction、runtime 卡片等）。Settings 分组面板不动（内部控件依赖白面板上的 surface-2）。26 文件，tsc 与 1662 前端测试通过；light/warm 两主题截图核过，待实机验收。
+
 2026-09-28 00:08 · feat(layout)+feat(terminal): 提交 9-25 起一直未入库的两块。一、Project → Screens：每个 Screen 归属一个项目，Screen 栏只显示当前项目的，左侧 ProjectSwitcher/侧栏点项目/⌘J 跳转面板（Orca 同款，非 Mac 为 Ctrl+Shift+J）切换，记住每个项目上次所在 Screen；旧 Screen 首次加载按内容归档（会话目录优先、再看终端 cwd），删项目时其 Screen 归 Default。二、终端重开回到原目录并续上 Claude Code / Codex：`terminal_probe` 每 3 秒读 shell cwd（macOS proc_pidinfo）与前台进程（Claude 读 `~/.claude/sessions/<pid>.json`，Codex 读其打开的 rollout 首行），仍在跑的重启后自动 `claude --resume` / `codex resume`，已退出的放右键菜单。审查已知小项未修：Claude 进程崩溃留下的 pid 文件若被新进程复用 pid 会误判；Codex 会话缓存按 pid。tsc、eslint、全量前端与 Rust 测试通过。
 
 2026-09-27 21:47 · feat(terminal): 终端里手动 export 的变量跨重启保留。参照 Orca（它靠 daemon 让 shell 不死，重启机器照样丢）改为 shell 自记：zsh 走 ZDOTDIR 包装、bash 走 --rcfile，先跑用户自己的 rc，每个提示符把「与 rc 结果不同」的导出变量（含 unset）写进 `terminal-env/<pane>.sh`（0700 目录），重开同一 pane 在 rc 之后 source；关 pane 删、启动时按恢复的布局清孤儿（leaf id 会复用）。真 PTY 实测 zsh/bash 3.2 往返、带空格引号的值、$? 保留、/etc/zshrc 的 HISTFILE 纠回、用户自定 ZDOTDIR、真实 oh-my-zsh rc 均正常；钩子 0.6ms/提示符。1662 前端测试、104 Rust 测试、tsc、eslint 全绿，DMG 已打，待实机验收。

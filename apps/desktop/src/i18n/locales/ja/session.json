@@ -275,6 +275,20 @@
         "default_other": "{{count}} ステップを実行"
       },
       "failedCount": "{{count}} 件失敗"
+    },
+    "process": {
+      "thinking": "分析完了",
+      "read": "ファイルを読み込み",
+      "write": "ファイルを書き込み",
+      "search": "コードを検索",
+      "edit": "ファイルを編集",
+      "commands": "コマンドを実行",
+      "webFetch": "ウェブページを閲覧",
+      "tools": "ツールを呼び出し",
+      "joinTwo": "{{first}}、{{second}}",
+      "comma": "、",
+      "sharedPrefix": "",
+      "more": "{{title}}など"
     }
   },
   "artifact": {
@@ -339,8 +353,8 @@
     "allowOnce": "今回のみ許可"
   },
   "turn": {
-    "worked": "作業",
-    "workedFor": "{{duration}} 作業しました"
+    "worked": "作業完了",
+    "workedFor": "所要時間 {{duration}}"
   },
   "reasoning": {
     "thinking": "思考中…",
@@ -513,5 +527,40 @@
     "close": "検索を閉じる",
     "none": "該当なし",
     "find": "検索…"
+  },
+  "turnNav": {
+    "label": "ターンナビゲーション",
+    "jump": "ターン {{turn}} へ移動",
+    "turn": "ターン {{turn}}"
+  },
+  "trajectory": {
+    "title": "トラジェクトリ",
+    "toggle": "トラジェクトリ — この会話のすべてのステップ",
+    "duration": "時間",
+    "useActual": "実際の時間を使う",
+    "useEqual": "等幅で表示",
+    "turns": "ターン",
+    "expandTurns": "ターンを展開",
+    "collapseTurns": "ターンを折りたたむ",
+    "calls": "呼び出し",
+    "expandCalls": "呼び出しを展開",
+    "collapseCalls": "呼び出しを折りたたむ",
+    "search": "検索",
+    "user": "ユーザー",
+    "assistant": "アシスタント",
+    "tool": "ツール",
+    "message": "メッセージ",
+    "system": "システム",
+    "compacted": "圧縮済み",
+    "input": "入力",
+    "model": "モデル",
+    "tools": "ツール",
+    "turn": "ターン {{n}}",
+    "noOutput": "出力なし",
+    "empty": "まだステップはありません。",
+    "noMatch": "一致するステップはありません。",
+    "steps_one": "{{count}} ステップ",
+    "steps_other": "{{count}} ステップ",
+    "close": "トラジェクトリを閉じる"
   }
 }

@@ -275,6 +275,20 @@
         "default_other": "단계 {{count}}개 실행"
       },
       "failedCount": "{{count}}개 실패"
+    },
+    "process": {
+      "thinking": "분석 완료",
+      "read": "파일 읽음",
+      "write": "파일 작성",
+      "search": "코드 검색",
+      "edit": "파일 수정",
+      "commands": "명령 실행",
+      "webFetch": "웹 페이지 방문",
+      "tools": "도구 호출",
+      "joinTwo": "{{first}} 및 {{second}}",
+      "comma": ", ",
+      "sharedPrefix": "",
+      "more": "{{title}} 등"
     }
   },
   "artifact": {
@@ -339,8 +353,8 @@
     "allowOnce": "한 번만 허용"
   },
   "turn": {
-    "worked": "작업",
-    "workedFor": "{{duration}} 동안 작업함"
+    "worked": "작업 완료",
+    "workedFor": "소요 시간 {{duration}}"
   },
   "reasoning": {
     "thinking": "생각 중…",
@@ -513,5 +527,40 @@
     "close": "찾기 닫기",
     "none": "결과 없음",
     "find": "찾기…"
+  },
+  "turnNav": {
+    "label": "턴 탐색",
+    "jump": "{{turn}}번째 턴으로 이동",
+    "turn": "{{turn}}번째 턴"
+  },
+  "trajectory": {
+    "title": "궤적",
+    "toggle": "궤적 — 이 대화의 모든 단계",
+    "duration": "시간",
+    "useActual": "실제 시간 사용",
+    "useEqual": "같은 너비로 표시",
+    "turns": "턴",
+    "expandTurns": "턴 펼치기",
+    "collapseTurns": "턴 접기",
+    "calls": "호출",
+    "expandCalls": "호출 펼치기",
+    "collapseCalls": "호출 접기",
+    "search": "검색",
+    "user": "사용자",
+    "assistant": "어시스턴트",
+    "tool": "도구",
+    "message": "메시지",
+    "system": "시스템",
+    "compacted": "압축됨",
+    "input": "입력",
+    "model": "모델",
+    "tools": "도구",
+    "turn": "{{n}}번째 턴",
+    "noOutput": "출력 없음",
+    "empty": "아직 단계가 없습니다.",
+    "noMatch": "일치하는 단계가 없습니다.",
+    "steps_one": "{{count}}단계",
+    "steps_other": "{{count}}단계",
+    "close": "궤적 닫기"
   }
 }

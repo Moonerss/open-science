@@ -20,7 +20,8 @@
     "theme": {
       "light": "Light",
       "warm": "Warm",
-      "dark": "Dark"
+      "dark": "Dark",
+      "system": "System"
     },
     "zoom": {
       "label": "Zoom",
@@ -28,6 +29,13 @@
       "in": "Zoom in",
       "out": "Zoom out",
       "reset": "Reset"
+    },
+    "fontSize": {
+      "title": "Font size",
+      "description": "Only affects conversation content",
+      "unit": "px",
+      "increase": "Increase font size",
+      "decrease": "Decrease font size"
     }
   },
   "language": {

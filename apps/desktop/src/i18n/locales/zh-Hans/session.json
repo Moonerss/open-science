@@ -275,6 +275,20 @@
         "default_other": "执行了 {{count}} 个步骤"
       },
       "failedCount": "{{count}} 个失败"
+    },
+    "process": {
+      "thinking": "已完成分析",
+      "read": "已读取文件",
+      "write": "已写入文件",
+      "search": "已搜索代码",
+      "edit": "修改了文件",
+      "commands": "执行了命令",
+      "webFetch": "已访问网页",
+      "tools": "已调用工具",
+      "joinTwo": "{{first}}并{{second}}",
+      "comma": "，",
+      "sharedPrefix": "已",
+      "more": "{{title}}等"
     }
   },
   "artifact": {
@@ -339,8 +353,8 @@
     "allowOnce": "仅允许一次"
   },
   "turn": {
-    "worked": "工作过程",
-    "workedFor": "工作了 {{duration}}"
+    "worked": "已完成工作",
+    "workedFor": "用时 {{duration}}"
   },
   "reasoning": {
     "thinking": "思考中…",
@@ -513,5 +527,40 @@
     "close": "关闭查找",
     "none": "无结果",
     "find": "查找…"
+  },
+  "turnNav": {
+    "label": "轮次导航",
+    "jump": "跳转到第 {{turn}} 轮",
+    "turn": "第 {{turn}} 轮"
+  },
+  "trajectory": {
+    "title": "轨迹",
+    "toggle": "轨迹 — 这次对话的每一步",
+    "duration": "时长",
+    "useActual": "使用实际时长",
+    "useEqual": "使用等宽操作",
+    "turns": "轮次",
+    "expandTurns": "展开所有轮次",
+    "collapseTurns": "收起所有轮次",
+    "calls": "调用",
+    "expandCalls": "展开所有调用",
+    "collapseCalls": "收起所有调用",
+    "search": "搜索",
+    "user": "用户",
+    "assistant": "助手",
+    "tool": "工具",
+    "message": "消息",
+    "system": "系统",
+    "compacted": "已压缩",
+    "input": "输入",
+    "model": "模型",
+    "tools": "工具",
+    "turn": "第 {{n}} 轮",
+    "noOutput": "无输出",
+    "empty": "还没有步骤。",
+    "noMatch": "没有匹配的步骤。",
+    "steps_one": "{{count}} 步",
+    "steps_other": "{{count}} 步",
+    "close": "关闭轨迹"
   }
 }

@@ -206,7 +206,7 @@ function RunsView({ sessionId }: { sessionId?: string }) {
         )}
 
         {state !== "loading" && rows.length === 0 && !anyFilter && (
-          <div className="mt-8 rounded-input border border-dashed border-border bg-surface px-4 py-8 text-center">
+          <div className="mt-8 px-4 py-8 text-center">
             <FlaskConical size={22} className="mx-auto text-muted" strokeWidth={1.5} />
             <p className="mt-2 text-sm font-medium text-text">{t("empty.title")}</p>
             <p className="mx-auto mt-1 max-w-sm text-xs text-muted">
@@ -431,8 +431,8 @@ function RunRow({
           )}
 
           {r.logHash && log?.hash === r.logHash && (
-            <div className="overflow-hidden rounded-input border border-border bg-surface-2">
-              <div className="border-b border-border px-2.5 py-1 text-[11px] text-muted">{t("log.header")}</div>
+            <div className="overflow-hidden rounded-input bg-surface-2">
+              <div className="px-2.5 pt-1.5 text-[11px] text-muted">{t("log.header")}</div>
               {log.text === null ? (
                 <div className="flex items-center gap-2 px-2.5 py-2 text-muted">
                   <Loader2 size={12} className="animate-spin" /> {t("log.loading")}

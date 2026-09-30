@@ -88,6 +88,29 @@ import {
 } from "@/lib/browser";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/cn";
+import {
+  IconChevronDownOutlineRegular,
+  IconChevronUpOutlineRegular,
+  IconDarkOutlineMedium,
+  IconFollowsystemOutlineMedium,
+  IconLightOutlineMedium,
+  IconPersonalizationOutlineMedium,
+} from "@/components/icons/dsh";
+import appearanceCss from "@/components/settings/Appearance.module.css";
+import { CONTENT_FONT_MAX, CONTENT_FONT_MIN, type Theme } from "@/lib/store";
+
+/** Appearance cubes in DSH's order (Light, Dark, System), with this app's
+ *  warm palette beside light. */
+const THEME_CUBES: readonly { mode: Theme; Icon: typeof IconLightOutlineMedium }[] = [
+  // eslint-disable-next-line i18next/no-literal-string -- theme-mode keys, not display text
+  { mode: "light", Icon: IconLightOutlineMedium },
+  // eslint-disable-next-line i18next/no-literal-string -- theme-mode keys, not display text
+  { mode: "warm", Icon: IconPersonalizationOutlineMedium },
+  // eslint-disable-next-line i18next/no-literal-string -- theme-mode keys, not display text
+  { mode: "dark", Icon: IconDarkOutlineMedium },
+  // eslint-disable-next-line i18next/no-literal-string -- theme-mode keys, not display text
+  { mode: "system", Icon: IconFollowsystemOutlineMedium },
+];
 
 /**
  * Settings. ONE configuration surface: everything talks to the bundled
@@ -121,6 +144,8 @@ export function SettingsPage() {
   // Which settings section is on screen — the sidebar is the navigation.
   const section = resolveSection(useParams().section);
   const theme = useUiStore((s) => s.theme);
+  const contentFontSize = useUiStore((s) => s.contentFontSize);
+  const setContentFontSize = useUiStore((s) => s.setContentFontSize);
   const setTheme = useUiStore((s) => s.setTheme);
   const locale = useUiStore((s) => s.locale);
   const setLocale = useUiStore((s) => s.setLocale);
@@ -2054,25 +2079,56 @@ export function SettingsPage() {
         {section === "appearance" && (
         <Section title={t("appearance.title")} flush>
           <div className="divide-y divide-faint">
-            <Row title={t("appearance.themeLabel")}
-              control={
-                <div className="inline-flex shrink-0 gap-0.5">
-                  {/* eslint-disable-next-line i18next/no-literal-string -- internal theme-mode keys, not display text (the visible label is t(`appearance.theme.${mode}`)) */}
-                  {(["light", "warm", "dark"] as const).map((mode) => (
+            {/* DeepSeek Harness's appearance cubes; warm is this app's own palette. */}
+            <div className={appearanceCss.group}>
+              <div className={appearanceCss.title}>{t("appearance.themeLabel")}</div>
+              <div className={appearanceCss.cubeRow}>
+                {THEME_CUBES.map(({ mode, Icon }) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={cn(appearanceCss.themeCube, theme === mode && appearanceCss.selected)}
+                    aria-pressed={theme === mode}
+                    onClick={() => setTheme(mode)}
+                  >
+                    <Icon />
+                    {t(`appearance.theme.${mode}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className={appearanceCss.row}>
+              <div className={appearanceCss.rowText}>
+                <div className={appearanceCss.title}>{t("appearance.fontSize.title")}</div>
+                <div className={appearanceCss.desc}>{t("appearance.fontSize.description")}</div>
+              </div>
+              <div className={appearanceCss.control}>
+                <div className={appearanceCss.stepper}>
+                  <span className={appearanceCss.value}>{contentFontSize}</span>
+                  <span className={appearanceCss.arrows}>
                     <button
-                      key={mode}
-                      onClick={() => setTheme(mode)}
-                      className={cn(
-                        "rounded-[7px] px-4 py-1.5 text-[13px] transition-colors",
-                        theme === mode ? "bg-surface-2 text-text" : "text-muted hover:text-text",
-                      )}
+                      type="button"
+                      className={appearanceCss.arrow}
+                      aria-label={t("appearance.fontSize.increase")}
+                      disabled={contentFontSize >= CONTENT_FONT_MAX}
+                      onClick={() => setContentFontSize(contentFontSize + 1)}
                     >
-                      {t(`appearance.theme.${mode}`)}
+                      <IconChevronUpOutlineRegular size={9} />
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      className={appearanceCss.arrow}
+                      aria-label={t("appearance.fontSize.decrease")}
+                      disabled={contentFontSize <= CONTENT_FONT_MIN}
+                      onClick={() => setContentFontSize(contentFontSize - 1)}
+                    >
+                      <IconChevronDownOutlineRegular size={9} />
+                    </button>
+                  </span>
                 </div>
-              }
-            />
+                <span className={appearanceCss.unit}>{t("appearance.fontSize.unit")}</span>
+              </div>
+            </div>
             <Row title={t("language.label")}
               control={
                 <select

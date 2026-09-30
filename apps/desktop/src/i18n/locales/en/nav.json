@@ -5,7 +5,12 @@
     "expand": "Expand sidebar",
     "expandTitle": "Expand sidebar ({{shortcut}})",
     "settings": "Settings",
-    "home": "Home"
+    "home": "Home",
+    "searchAria": "Search sessions",
+    "searchPlaceholder": "Search session names",
+    "searchClear": "Clear search",
+    "searchResultsAria": "Search results",
+    "searchNoMatches": "No matching sessions"
   },
   "items": {
     "new": "New",
@@ -76,6 +81,8 @@
     "showArchived": "Show archived",
     "archivedBadge": "archived",
     "archive": "Archive",
+    "archiveTitle": "Archive this session?",
+    "archiveBody": "“{{title}}” leaves the sidebar. Nothing is deleted — find it under All sessions → Show archived, where Restore brings it back.",
     "restore": "Restore",
     "loadMore": "Load more",
     "loading": "Loading…",

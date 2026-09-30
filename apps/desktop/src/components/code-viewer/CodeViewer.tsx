@@ -28,7 +28,7 @@ export function CodeViewer({ code, language, startLine = 1 }: Props) {
   return (
     <div
       {...{ [HSCROLL_ATTR]: "" }}
-      className="flex overflow-x-auto overflow-y-hidden rounded-input border border-border bg-surface font-mono text-[12.5px] leading-[1.55]"
+      className="flex overflow-x-auto overflow-y-hidden rounded-input bg-surface font-mono text-[12.5px] leading-[1.55]"
     >
       <div
         aria-hidden

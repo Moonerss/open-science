@@ -282,6 +282,20 @@
         "default_other": "ejecutó {{count}} pasos"
       },
       "failedCount": "{{count}} fallidos"
+    },
+    "process": {
+      "thinking": "Análisis completado",
+      "read": "Archivos leídos",
+      "write": "Archivos escritos",
+      "search": "Código buscado",
+      "edit": "Archivos editados",
+      "commands": "Comandos ejecutados",
+      "webFetch": "Páginas web visitadas",
+      "tools": "Herramientas llamadas",
+      "joinTwo": "{{first}} y {{second}}",
+      "comma": ", ",
+      "sharedPrefix": "",
+      "more": "{{title}}, etc."
     }
   },
   "artifact": {
@@ -347,8 +361,8 @@
     "allowOnce": "Permitir una vez"
   },
   "turn": {
-    "worked": "Trabajó",
-    "workedFor": "Trabajó durante {{duration}}"
+    "worked": "Trabajo hecho",
+    "workedFor": "Duración {{duration}}"
   },
   "reasoning": {
     "thinking": "Pensando…",
@@ -524,5 +538,40 @@
     "close": "Cerrar búsqueda",
     "none": "sin resultados",
     "find": "Buscar…"
+  },
+  "turnNav": {
+    "label": "Navegación por turnos",
+    "jump": "Ir al turno {{turn}}",
+    "turn": "Turno {{turn}}"
+  },
+  "trajectory": {
+    "title": "Trayectoria",
+    "toggle": "Trayectoria — cada paso de esta conversación",
+    "duration": "Duración",
+    "useActual": "Duración real",
+    "useEqual": "Ancho igual",
+    "turns": "Turnos",
+    "expandTurns": "Expandir turnos",
+    "collapseTurns": "Contraer turnos",
+    "calls": "Llamadas",
+    "expandCalls": "Expandir llamadas",
+    "collapseCalls": "Contraer llamadas",
+    "search": "Buscar",
+    "user": "USUARIO",
+    "assistant": "ASISTENTE",
+    "tool": "HERRAMIENTA",
+    "message": "MENSAJE",
+    "system": "SISTEMA",
+    "compacted": "COMPACTADO",
+    "input": "Entrada",
+    "model": "Modelo",
+    "tools": "Herramientas",
+    "turn": "Turno {{n}}",
+    "noOutput": "sin salida",
+    "empty": "Aún no hay pasos.",
+    "noMatch": "Ningún paso coincide.",
+    "steps_one": "{{count}} paso",
+    "steps_other": "{{count}} pasos",
+    "close": "Cerrar trayectoria"
   }
 }

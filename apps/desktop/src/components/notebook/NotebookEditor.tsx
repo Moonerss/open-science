@@ -618,7 +618,7 @@ export function NotebookEditor({
                 ariaLabel={`Cell ${i + 1}`}
               />
               {cell.output && (
-                <pre className="mt-1.5 whitespace-pre-wrap rounded-input border border-border bg-surface-2 p-3 font-mono text-[12px] text-text">
+                <pre className="mt-1.5 whitespace-pre-wrap px-3 py-1 font-mono text-[12px] text-text">
                   {cell.output}
                 </pre>
               )}
@@ -626,7 +626,7 @@ export function NotebookEditor({
                 <img
                   src={`data:image/png;base64,${cell.image}`}
                   alt={`Cell ${cell.index} figure`}
-                  className="mt-1.5 max-w-full rounded-input border border-border bg-white p-2"
+                  className="mt-2 max-w-full rounded-input"
                 />
               )}
             </div>

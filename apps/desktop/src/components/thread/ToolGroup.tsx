@@ -1,16 +1,17 @@
 import { memo, useEffect, useState } from "react";
+import { PanelRight } from "lucide-react";
 import {
-  BookOpen,
-  ChevronRight,
-  FilePlus2,
-  FolderOpen,
-  Globe,
-  PanelRight,
-  Pencil,
-  Search,
-  Terminal,
-  Wrench,
-} from "lucide-react";
+  IconApiOutlineRegular,
+  IconBrowseOutlineRegular,
+  IconChevronDownOutlineRegular,
+  IconChevronRightOutlineRegular,
+  IconChevronUpOutlineRegular,
+  IconEditOutlineRegular,
+  IconSearchOutlineRegular,
+  IconSparkleRegular,
+  IconThinkOutlineRegular,
+} from "@/components/icons/dsh";
+import css from "./ToolGroup.module.css";
 import { useTranslation } from "react-i18next";
 import type { ThreadBlock, ToolCallBlock } from "@ai4s/shared";
 import i18n from "@/i18n";
@@ -98,71 +99,74 @@ export function dropProcessArtifacts(blocks: ThreadBlock[]): ThreadBlock[] {
   return blocks.some(process) ? blocks.filter((b) => !process(b)) : blocks;
 }
 
-/** "Ran 3 commands, created a file" — one phrase per verb, in first-seen order.
- *  Counts tool calls only; interleaved reasoning doesn't add to the summary. */
-export function summarizeGroup(blocks: ThreadBlock[]): string {
-  const counts = new Map<string, number>();
+/**
+ * DSH's activity categories (ui-chat step-process), keyed from a tool call's
+ * verb. The same category decides the row's icon and its words, so the two
+ * can never disagree.
+ */
+type Activity = "read" | "write" | "search" | "edit" | "commands" | "webFetch" | "tools";
+
+const VERB_ACTIVITY: Record<string, Activity> = {
+  Ran: "commands",
+  Read: "read",
+  Listed: "read",
+  Edited: "edit",
+  Created: "write",
+  Searched: "search",
+  Fetched: "webFetch",
+};
+
+/** DSH PROCESS_ICONS, at DSH's sizes. */
+const ACTIVITY_ICON: Record<Activity | "thinking", React.ReactNode> = {
+  thinking: <IconThinkOutlineRegular />,
+  read: <IconBrowseOutlineRegular size={14} />,
+  write: <IconEditOutlineRegular size={14} />,
+  search: <IconSearchOutlineRegular size={14} />,
+  edit: <IconEditOutlineRegular size={14} />,
+  commands: <IconApiOutlineRegular />,
+  webFetch: <IconBrowseOutlineRegular size={14} />,
+  tools: <IconSparkleRegular size={14} />,
+};
+
+/** Categories of a run, most frequent first (ties keep first-seen order). */
+function rankedActivities(blocks: ThreadBlock[]): Activity[] {
+  const counts = new Map<Activity, number>();
   for (const b of blocks) {
     if (b.kind !== "tool-call") continue;
-    const verb = b.verb ?? "";
-    counts.set(verb, (counts.get(verb) ?? 0) + 1);
+    const kind = VERB_ACTIVITY[b.verb ?? ""] ?? "tools";
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
-  const phrase = (verb: string, n: number): string => {
-    switch (verb) {
-      case "Ran":
-        return i18n.t("session:tool.group.phrase.ran", { count: n });
-      case "Created":
-        return i18n.t("session:tool.group.phrase.created", { count: n });
-      case "Edited":
-        return i18n.t("session:tool.group.phrase.edited", { count: n });
-      case "Read":
-        return i18n.t("session:tool.group.phrase.read", { count: n });
-      case "Searched":
-        return i18n.t("session:tool.group.phrase.searched", { count: n });
-      case "Listed":
-        return i18n.t("session:tool.group.phrase.listed");
-      case "Fetched":
-        return i18n.t("session:tool.group.phrase.fetched", { count: n });
-      default:
-        return i18n.t("session:tool.group.phrase.default", { count: n });
-    }
-  };
-  const text = [...counts.entries()].map(([verb, n]) => phrase(verb, n)).join(", ");
-  return text.charAt(0).toUpperCase() + text.slice(1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([kind]) => kind);
 }
 
 /**
- * The icon for a run of activity, chosen by what it mostly did.
- *
- * Codex's rule, read off its own rows: the icon follows the FIRST phrase of the
- * summary, so "Read files, ran commands, searched the web" gets the book and
- * "Edited files, read files, ran commands" the pencil. The verb order is
- * first-seen (see `summarizeGroup`), so the icon and the sentence can never
- * disagree — both come from the same ordering.
- *
- * Why an icon at all: a wall of identical grey rows gives the reader nothing to
- * aim at when scrolling back for "where did it edit something". Shape is
- * faster to scan than text.
+ * A settled run's title, composed like DSH's `processTitle`: its top three
+ * categories without counts — "Read files and ran commands", three joined by
+ * commas, and ", etc." past three. Two labels sharing the locale's prefix
+ * (zh 「已」) drop it from the second.
  */
-const VERB_ICON: Record<string, React.ReactNode> = {
-  Ran: <Terminal size={14} strokeWidth={1.5} />,
-  Read: <BookOpen size={14} strokeWidth={1.5} />,
-  Edited: <Pencil size={14} strokeWidth={1.5} />,
-  Created: <FilePlus2 size={14} strokeWidth={1.5} />,
-  Searched: <Search size={14} strokeWidth={1.5} />,
-  Listed: <FolderOpen size={14} strokeWidth={1.5} />,
-  Fetched: <Globe size={14} strokeWidth={1.5} />,
-};
-
-export function groupIcon(blocks: ThreadBlock[]): React.ReactNode {
-  for (const b of blocks) {
-    if (b.kind !== "tool-call") continue;
-    const icon = VERB_ICON[b.verb ?? ""];
-    if (icon) return icon;
+export function summarizeGroup(blocks: ThreadBlock[]): string {
+  const kinds = rankedActivities(blocks);
+  const labels = kinds.slice(0, 3).map((k) => i18n.t(`session:tool.process.${k}`));
+  const [first, second] = labels;
+  if (first === undefined) return i18n.t("session:tool.process.thinking");
+  if (second === undefined) return first;
+  const continuation = (label: string) => label.charAt(0).toLowerCase() + label.slice(1);
+  if (labels.length === 2) {
+    const prefix = i18n.t("session:tool.process.sharedPrefix");
+    const shared = prefix !== "" && first.startsWith(prefix) && second.startsWith(prefix);
+    return i18n.t("session:tool.process.joinTwo", {
+      first,
+      second: continuation(shared ? second.slice(prefix.length) : second),
+    });
   }
-  // A run whose verbs this build does not know still gets a shape rather than
-  // an empty slot, so the icon column stays a column.
-  return <Wrench size={14} strokeWidth={1.5} />;
+  const title = [first, ...labels.slice(1).map(continuation)].join(i18n.t("session:tool.process.comma"));
+  return kinds.length > 3 ? i18n.t("session:tool.process.more", { title }) : title;
+}
+
+/** The icon of a run's most frequent category — the same one its title leads with. */
+export function groupIcon(blocks: ThreadBlock[]): React.ReactNode {
+  return ACTIVITY_ICON[rankedActivities(blocks)[0] ?? "thinking"];
 }
 
 export function fmtDuration(ms: number): string {
@@ -364,7 +368,7 @@ const ToolRow = memo(function ToolRow({
           {block.title}
         </span>
         {detail && (
-          <ChevronRight
+          <IconChevronRightOutlineRegular
             size={12}
             className={cn(
               "shrink-0 text-muted transition-transform duration-200",
@@ -454,51 +458,34 @@ export function ToolGroup({
       <button
         type="button"
         onClick={() => setUserOpen(!open)}
-        // No horizontal padding: this row sits between an agent message and a
-        // file card, both of which start at the content edge, and the 8px inset
-        // put its chevron out of line with everything around it. The hover
-        // highlight still spans the full column — it is `w-full`, and only the
-        // content was ever inset.
-        // Codex's proportions: reading size, not the 12.5px of a log line, and
-        // real vertical room so an activity line sits BETWEEN paragraphs rather
-        // than crowding against them. It is one line among prose now, not the
-        // header of a list, so it can afford the space.
-        className="group flex w-full items-center gap-2.5 py-1.5 text-left text-[13.5px] text-muted hover:text-text"
+        aria-expanded={open}
+        className={css.title}
       >
-        {/* ONE icon column for every row in an activity run. The leading glyphs
-            differ in size (Check 13, AlertTriangle 14, the running dot, a brain)
-            so letting them size themselves left the column ragged — which is
-            what the misalignment in the group was. A fixed slot centres whatever
-            goes in it, whatever its glyph. */}
-        <span className={cn(ICON_SLOT, "text-muted/70")}>
-          {active ? <RunningDot className="text-accent" /> : groupIcon(blocks)}
+        {/* DSH: the activity icon, swapped for the chevron on hover/open. */}
+        <span className={css.leading} aria-hidden="true">
+          <span className={css.activityIcon}>
+            {active ? <RunningDot className="text-accent" /> : groupIcon(blocks)}
+          </span>
+          <span className={css.chevron}>
+            {open ? <IconChevronUpOutlineRegular /> : <IconChevronDownOutlineRegular />}
+          </span>
         </span>
         {active && running ? (
           <>
-            <span className="min-w-0 truncate font-mono text-text" title={running.command ?? running.title}>
+            <span className={cn(css.label, "font-mono text-text")} title={running.command ?? running.title}>
               {running.title}
             </span>
             {running.startedAt !== undefined && <Elapsed start={running.startedAt} />}
           </>
         ) : (
-          <span className="min-w-0 truncate">{summarizeGroup(blocks)}</span>
+          <span className={css.label}>{summarizeGroup(blocks)}</span>
         )}
         {failed > 0 && (
           <span className="shrink-0 text-error">· {t("tool.group.failedCount", { count: failed })}</span>
         )}
-        {/* The shape at the head says WHAT this run did; expandability is a
-            hover hint, so a settled conversation reads as a list of activity
-            rather than a column of disclosure triangles. */}
-        <ChevronRight
-          size={13}
-          className={cn(
-            "ml-auto shrink-0 text-muted/60 transition-transform duration-200",
-            open ? "rotate-90" : "opacity-0 group-hover:opacity-100",
-          )}
-        />
       </button>
       <Collapse open={open}>
-        <div className="pl-4">{rows}</div>
+        <div className={cn(css.body, "pl-[22px]")}>{rows}</div>
       </Collapse>
     </div>
   );

@@ -97,8 +97,8 @@ describe("Sidebar projects", () => {
     const rail = within(await screen.findByRole("complementary"));
     await rail.findByText("BCI Trends");
     // Being the active project tints the row's folder icon with the accent.
-    expect(rail.getByText("BCI Trends").closest("div")?.querySelector(".text-accent")).not.toBeNull();
-    expect(rail.getByText("Other").closest("div")?.querySelector(".text-accent")).toBeNull();
+    expect(rail.getByText("BCI Trends").closest("button")?.querySelector("[data-active]")).not.toBeNull();
+    expect(rail.getByText("Other").closest("button")?.querySelector("[data-active]")).toBeNull();
   });
 
   it("clicking a project shows its Screens; clicking the shown one folds it", async () => {

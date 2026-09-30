@@ -292,16 +292,16 @@ export const DataTable = memo(function DataTable({ block }: { block: DataTableBl
     // latched trackpad gestures back as well (lib/wheelChain).
     <div
       {...{ [HSCROLL_ATTR]: "" }}
-      className="overflow-x-auto overflow-y-hidden rounded-card border border-border bg-surface shadow-card"
+      className="overflow-x-auto overflow-y-hidden"
     >
       {block.caption && (
-        <div className="border-b border-border px-4 py-2 text-xs text-muted">{block.caption}</div>
+        <div className="pb-2 text-xs text-muted">{block.caption}</div>
       )}
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-border text-left text-muted">
             {block.columns.map((c) => (
-              <th key={c} className="px-4 py-2 font-medium">
+              <th key={c} className="py-2 pr-4 font-medium">
                 {c}
               </th>
             ))}
@@ -314,7 +314,7 @@ export const DataTable = memo(function DataTable({ block }: { block: DataTableBl
                 <td
                   key={j}
                   className={cn(
-                    "px-4 py-2 text-text",
+                    "py-2 pr-4 text-text",
                     j === row.length - 1 && "font-mono text-[13px] text-link",
                   )}
                 >
@@ -335,8 +335,8 @@ export const RunningJobsOverlay = memo(function RunningJobsOverlay({
   block: RunningJobsBlock;
 }) {
   return (
-    <div className="rounded-card border border-border bg-surface shadow-card">
-      <div className="border-b border-border px-4 py-2 text-xs font-medium uppercase tracking-wider text-muted">
+    <div>
+      <div className="border-b border-border pb-2 text-xs font-medium uppercase tracking-wider text-muted">
         {block.title}
       </div>
       <ul className="divide-y divide-border/60">
@@ -435,7 +435,7 @@ export const HistoryRepair = memo(function HistoryRepair({
   const canRepair = !!onRevert && !!target;
 
   return (
-    <div className="rounded-card border border-border bg-surface-2/50 p-3 text-sm">
+    <div className="rounded-card bg-surface-2 p-3 text-sm">
       <div className="flex items-start gap-2">
         <Wrench size={14} className="mt-0.5 shrink-0 text-muted" aria-hidden />
         <div className="min-w-0 flex-1">

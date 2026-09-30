@@ -282,6 +282,20 @@
         "default_other": "a exécuté {{count}} étapes"
       },
       "failedCount": "{{count}} en échec"
+    },
+    "process": {
+      "thinking": "Analyse terminée",
+      "read": "Fichiers lus",
+      "write": "Fichiers écrits",
+      "search": "Code recherché",
+      "edit": "Fichiers modifiés",
+      "commands": "Commandes exécutées",
+      "webFetch": "Pages web consultées",
+      "tools": "Outils appelés",
+      "joinTwo": "{{first}} et {{second}}",
+      "comma": ", ",
+      "sharedPrefix": "",
+      "more": "{{title}}, etc."
     }
   },
   "artifact": {
@@ -347,8 +361,8 @@
     "allowOnce": "Autoriser une fois"
   },
   "turn": {
-    "worked": "Travail",
-    "workedFor": "A travaillé pendant {{duration}}"
+    "worked": "Terminé",
+    "workedFor": "Durée {{duration}}"
   },
   "reasoning": {
     "thinking": "Réflexion…",
@@ -524,5 +538,40 @@
     "close": "Fermer la recherche",
     "none": "aucun résultat",
     "find": "Rechercher…"
+  },
+  "turnNav": {
+    "label": "Navigation par tour",
+    "jump": "Aller au tour {{turn}}",
+    "turn": "Tour {{turn}}"
+  },
+  "trajectory": {
+    "title": "Trajectoire",
+    "toggle": "Trajectoire — chaque étape de cette conversation",
+    "duration": "Durée",
+    "useActual": "Durée réelle",
+    "useEqual": "Largeur égale",
+    "turns": "Tours",
+    "expandTurns": "Déplier les tours",
+    "collapseTurns": "Replier les tours",
+    "calls": "Appels",
+    "expandCalls": "Déplier les appels",
+    "collapseCalls": "Replier les appels",
+    "search": "Rechercher",
+    "user": "UTILISATEUR",
+    "assistant": "ASSISTANT",
+    "tool": "OUTIL",
+    "message": "MESSAGE",
+    "system": "SYSTÈME",
+    "compacted": "COMPACTÉ",
+    "input": "Entrée",
+    "model": "Modèle",
+    "tools": "Outils",
+    "turn": "Tour {{n}}",
+    "noOutput": "aucune sortie",
+    "empty": "Aucune étape pour l’instant.",
+    "noMatch": "Aucune étape correspondante.",
+    "steps_one": "{{count}} étape",
+    "steps_other": "{{count}} étapes",
+    "close": "Fermer la trajectoire"
   }
 }

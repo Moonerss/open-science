@@ -30,13 +30,16 @@ import { FindBar } from "@/components/ui/FindBar";
 import { isGatewayWeb } from "@/lib/webMode";
 import { useIsMobile } from "@/lib/useIsMobile";
 import { queryRuns } from "@/lib/runs";
-import { useOverlayTitlebar, useUiStore } from "@/lib/store";
+import { CONTENT_FONT_DEFAULT, useOverlayTitlebar, useUiStore } from "@/lib/store";
 import { overlayTitlebarStyle } from "@/lib/titlebar";
 import { useCompactWidth } from "@/lib/useCompactWidth";
 import { fileInspectorFromBlock } from "@/lib/artifacts";
 import { useChatScroll } from "@/lib/scrollMemory";
 import { useWheelChain } from "@/lib/wheelChain";
 import { BlockList, type BlockHandlers } from "@/components/thread/BlockList";
+import { TurnNavigator } from "@/components/thread/TurnNavigator";
+import { TrajectoryPane } from "@/components/thread/TrajectoryPane";
+import { IconBranchOutlineRegular } from "@/components/icons/dsh";
 import { SubagentPane } from "@/components/thread/SubagentPane";
 import { SelectionActions } from "@/components/thread/SelectionActions";
 import { Elapsed } from "@/components/thread/ToolGroup";
@@ -215,6 +218,7 @@ export function SessionView({
   const setShowFiles = useRuntimeStore((s) => s.setShowFiles);
   const setShowRuns = useRuntimeStore((s) => s.setShowRuns);
   const setShowAgents = useRuntimeStore((s) => s.setShowAgents);
+  const setShowTrajectory = useRuntimeStore((s) => s.setShowTrajectory);
   const answerQuestion = useRuntimeStore((s) => s.answerQuestion);
   const rejectQuestion = useRuntimeStore((s) => s.rejectQuestion);
   const replyPermission = useRuntimeStore((s) => s.replyPermission);
@@ -225,6 +229,10 @@ export function SessionView({
   const editMessage = useRuntimeStore((s) => s.editMessage);
   const revertMessage = useRuntimeStore((s) => s.revertMessage);
   const setComposerDraft = useUiStore((s) => s.setComposerDraft);
+  // Settings → Appearance → Font size scales the conversation only (DSH), on
+  // top of this pane's own zoom; the composer keeps the pane zoom alone.
+  const contentFontSize = useUiStore((s) => s.contentFontSize);
+  const contentZoom = zoom * (contentFontSize / CONTENT_FONT_DEFAULT);
   const approvalMode = useRuntimeStore((s) => s.approvalMode);
   const setApprovalMode = useRuntimeStore((s) => s.setApprovalMode);
   const agents = useRuntimeStore((s) => s.agents);
@@ -431,7 +439,8 @@ export function SessionView({
   const showFiles = !activeArtifact && !!pane?.showFiles;
   const showRuns = !activeArtifact && !showFiles && !!pane?.showRuns;
   const showAgents = !activeArtifact && !showFiles && !showRuns && !!pane?.showAgents;
-  const inspectorActive = !!activeArtifact || showFiles || showRuns || showAgents;
+  const showTrajectory = !activeArtifact && !showFiles && !showRuns && !showAgents && !!pane?.showTrajectory;
+  const inspectorActive = !!activeArtifact || showFiles || showRuns || showAgents || showTrajectory;
   const compactNotebooks = !solo || isMobile;
   // Header tool labels ("Files", "Runs", "Subagents") need real room. `solo`
   // only says this is the single pane, which a narrow window makes irrelevant.
@@ -584,6 +593,12 @@ export function SessionView({
       onClose={() => setShowAgents(false, sid ?? undefined)}
       controls={<MaximizePaneButton />}
       focus={subagentFocus ?? undefined}
+    />
+  ) : showTrajectory ? (
+    <TrajectoryPane
+      blocks={thread?.blocks ?? []}
+      onClose={() => setShowTrajectory(false, sid ?? undefined)}
+      controls={<MaximizePaneButton />}
     />
   ) : showFiles ? (
     <SessionFilesPane
@@ -747,6 +762,25 @@ export function SessionView({
                   {sessionDir ? baseName(sessionDir) : t("live.filesToggle.default")}
                 </span>
               )}
+            </button>
+          )}
+          {/* Trajectory: every step of this conversation as one table
+              (DeepSeek Harness's view) — an icon beside the folder. */}
+          {eid && (
+            <button
+              onClick={() => {
+                pinEphemeral();
+                setShowTrajectory(!showTrajectory, sid ?? undefined);
+              }}
+              className={cn(
+                "flex items-center rounded-md p-1 transition-colors hover:bg-surface-2",
+                showTrajectory ? "bg-surface-2 text-text" : "text-muted",
+              )}
+              title={t("trajectory.toggle")}
+              aria-label={t("trajectory.title")}
+              aria-pressed={showTrajectory}
+            >
+              <IconBranchOutlineRegular size={14} />
             </button>
           )}
           {eid && hasRuns && (
@@ -922,6 +956,9 @@ export function SessionView({
             onClose={() => setFinding(false)}
           />
         )}
+        {/* The turn rail overlays the scroll box's right edge, so the two share
+            a positioned wrapper. */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
         <div
           ref={chatRef}
           onScroll={onChatScroll}
@@ -949,11 +986,11 @@ export function SessionView({
             onContextMenu={(e) => {
               if (allowsNativeMenu(e.target)) e.stopPropagation();
             }}
-            style={zoom !== 1 ? { zoom } : undefined}
+            style={contentZoom !== 1 ? { zoom: contentZoom } : undefined}
             className="mx-auto flex max-w-[760px] flex-col gap-4 px-8 pt-6"
           >
             {!connected && !connecting && (
-              <div className="rounded-card border border-border bg-surface p-5 shadow-card">
+              <div className="rounded-card bg-surface-2 p-5">
                 <div className="text-sm font-medium text-text">{t("live.runtime.title")}</div>
                 <p className="mt-1 text-sm text-muted">
                   {t("live.runtime.bodyPrefix")}{" "}
@@ -961,7 +998,7 @@ export function SessionView({
                   <span className="font-mono">opencode serve</span>
                   {t("live.runtime.bodySuffix")}
                 </p>
-                <div className="mt-3 rounded-input bg-surface-2 px-3 py-2 font-mono text-xs text-text">
+                <div className="mt-3 rounded-input bg-surface px-3 py-2 font-mono text-xs text-text">
                   {serverUrl}
                 </div>
               </div>
@@ -972,7 +1009,7 @@ export function SessionView({
               // and nothing should be said about a wait the user never had.
               <div
                 role="status"
-                className="rounded-card border border-border bg-surface p-5 shadow-card"
+                className="rounded-card bg-surface-2 p-5"
               >
                 <div className="flex items-center gap-2 text-sm font-medium text-text">
                   <Loader2 size={13} className="animate-spin text-muted" />
@@ -1106,6 +1143,10 @@ export function SessionView({
               </div>
             )}
           </div>
+        </div>
+        {!historyLoading && thread && (
+          <TurnNavigator blocks={thread.blocks} scrollRef={chatRef} bottomInset={composerH + 12} />
+        )}
         </div>
 
         {!atLatest && (
@@ -1245,7 +1286,9 @@ export function SessionView({
                 ? () => setShowRuns(false, sid ?? undefined)
                 : showAgents
                   ? () => setShowAgents(false, sid ?? undefined)
-                  : () => setShowFiles(false, sid ?? undefined)
+                  : showTrajectory
+                    ? () => setShowTrajectory(false, sid ?? undefined)
+                    : () => setShowFiles(false, sid ?? undefined)
           }
         >
           {inspectorNode}

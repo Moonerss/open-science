@@ -141,7 +141,7 @@ export function SkillsPage() {
         )}
 
         {!connected ? (
-          <div className="mt-6 rounded-card border border-border bg-surface p-5 text-sm text-muted">
+          <div className="mt-6 text-sm text-muted">
             {t("skills.disconnected")}
           </div>
         ) : (
@@ -182,7 +182,7 @@ export function SkillsPage() {
             ) : (
               // Two columns on a wide window: thirty capabilities in one screen
               // rather than thirty scrolls.
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="mt-3 grid gap-x-6 border-t border-border sm:grid-cols-2">
                 {entries.map((entry) => (
                   <EntryCard key={`${entry.kind}:${entry.name}`} entry={entry} />
                 ))}
@@ -213,7 +213,7 @@ function EntryCard({ entry }: { entry: Entry }) {
   const { t } = useTranslation("pages");
   const label = entry.kind === "agent" ? agentModeLabel(entry.tag, t) : sourceLabel(entry.tag, t);
   return (
-    <article className="flex min-w-0 items-start gap-2.5 rounded-card border border-border bg-surface px-3 py-2.5">
+    <article className="flex min-w-0 items-start gap-2.5 border-b border-border px-1 py-3">
       {entry.kind === "agent" ? (
         <Bot size={15} className="mt-0.5 shrink-0 text-muted" />
       ) : (
@@ -309,7 +309,7 @@ function InstallSkill({
   }
 
   return (
-    <div className="mt-3 w-full rounded-card border border-border bg-surface p-3">
+    <div className="mt-3 w-full rounded-card bg-surface-2 p-3">
       <textarea
         autoFocus
         value={text}
