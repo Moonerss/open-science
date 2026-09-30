@@ -162,6 +162,7 @@
     "newSession": "Neue Sitzung",
     "heading": "Was sollen wir untersuchen?",
     "subheading": "Beschreiben Sie Ihre Analyse unten — oder beginnen Sie mit einem dieser Vorschläge.",
+    "subheadingNoCards": "Beschreiben Sie Ihre Analyse unten.",
     "demo": {
       "title": "Eine Demo-Analyse End-to-End ausführen",
       "description": "Einen Datensatz simulieren, ein Modell anpassen und eine Abbildung sowie einen nachvollziehbaren Bericht erstellen."

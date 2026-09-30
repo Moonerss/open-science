@@ -90,6 +90,9 @@ function findLastRunningTool(blocks?: ThreadBlocks): ToolCallBlock | undefined {
  */
 /** Header width below which the tool buttons show icons without their labels. */
 const HEADER_LABEL_MIN_PX = 620;
+/** Room (content px, above the composer) the welcome needs to show its four
+ *  starter cards; a shorter pane — a stacked split — shows only the invitation. */
+const STARTER_CARDS_MIN_PX = 480;
 
 /** Sessions already known to have (or not have) runs. The Runs toggle used to
  *  appear one async query after mount, and every header control that appears
@@ -525,6 +528,22 @@ export function SessionView({
     ro.observe(el);
     return () => ro.disconnect();
   }, [inspectorFillsPane]);
+
+  // The conversation box's height, for what only fits a tall pane (the starter
+  // cards). Zero is "not laid out", kept as the last real height.
+  const [chatH, setChatH] = useState(0);
+  useEffect(() => {
+    const el = chatRef.current;
+    if (!el) return;
+    const measure = () => setChatH((h) => el.clientHeight || h);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [inspectorFillsPane]);
+  // Unmeasured (0) counts as roomy: the cards are the default.
+  const roomForStarters = chatH === 0 || chatH - composerH >= STARTER_CARDS_MIN_PX * contentZoom;
 
   // ⌘F / Ctrl+F searches THIS pane, and only while it is the focused one: a
   // window can hold four conversations, and a find that picked one of them at
@@ -1037,7 +1056,7 @@ export function SessionView({
               </div>
             )}
             {connected && isEmpty && !eid && !webReadOnly && (
-              <WorkflowStarters onPick={(p) => void onSend(p)} />
+              <WorkflowStarters onPick={(p) => void onSend(p)} showCards={roomForStarters} />
             )}
             {historyLoading && <ThreadSkeleton />}
             {!historyLoading && thread && (
@@ -1157,14 +1176,14 @@ export function SessionView({
         )}
         </div>
 
-        {!atLatest && (
+        {!atLatest && !!thread?.blocks.length && (
           <div
             className="pointer-events-none absolute inset-x-0 z-20 flex justify-center"
             style={{ bottom: composerH + 18 }}
           >
             <button
               onClick={jumpToLatest}
-              className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-border bg-surface/95 px-3 py-1.5 text-xs font-medium text-text shadow-card backdrop-blur-sm transition-colors hover:bg-surface-2"
+              className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text shadow-card transition-colors hover:bg-surface-2"
               aria-label={t("live.latest")}
               title={t("live.latest")}
             >

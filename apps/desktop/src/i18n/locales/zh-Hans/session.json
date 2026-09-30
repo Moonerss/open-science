@@ -162,6 +162,7 @@
     "newSession": "新建会话",
     "heading": "我们该研究什么？",
     "subheading": "在下方描述您的分析——或从以下选项开始。",
+    "subheadingNoCards": "在下方描述您的分析。",
     "demo": {
       "title": "端到端运行一次演示分析",
       "description": "模拟一份数据集，拟合模型，并生成图表和可追溯的报告。"

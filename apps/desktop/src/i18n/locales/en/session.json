@@ -162,6 +162,7 @@
     "newSession": "New session",
     "heading": "What should we look into?",
     "subheading": "Describe your analysis below — or start from one of these.",
+    "subheadingNoCards": "Describe your analysis below.",
     "demo": {
       "title": "Run a demo analysis, end to end",
       "description": "Simulate a dataset, fit a model, and produce a figure and a traceable report."

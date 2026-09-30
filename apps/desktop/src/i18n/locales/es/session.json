@@ -162,6 +162,7 @@
     "newSession": "Nueva sesión",
     "heading": "¿Qué deberíamos investigar?",
     "subheading": "Describe tu análisis a continuación, o empieza con una de estas opciones.",
+    "subheadingNoCards": "Describe tu análisis a continuación.",
     "demo": {
       "title": "Ejecutar un análisis de demostración de principio a fin",
       "description": "Simula un conjunto de datos, ajusta un modelo y produce una figura y un informe trazable."
