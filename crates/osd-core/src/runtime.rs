@@ -548,9 +548,11 @@ fn strip_plugin_entry_points(package_json: &Path) -> Result<(), String> {
     let object = doc
         .as_object_mut()
         .ok_or_else(|| format!("{} is not a JSON object", package_json.display()))?;
-    let removed = ["main", "exports"]
-        .iter()
-        .any(|key| object.remove(*key).is_some());
+    // Not `any`: it short-circuits, and `exports` would survive a removed `main`.
+    let mut removed = false;
+    for key in ["main", "exports"] {
+        removed |= object.remove(key).is_some();
+    }
     if !removed {
         return Ok(());
     }
@@ -2978,10 +2980,11 @@ mod tests {
         let src = tmp.join("src");
         let dst = tmp.join("dst");
         write(&src.join(".opencode-plugin-version"), "1.18.32\n");
-        // The shape the fetch script actually produces and ships.
+        // The shape the fetch script ships, plus an `exports` — the runtime
+        // consults it before `main`, so both must go.
         write(
             &src.join("package.json"),
-            r#"{"name":"goal-plugin","version":"1.0.0","main":"goal-plugin.server.js","dependencies":{"@opencode-ai/plugin":"^1.18.32"}}"#,
+            r#"{"name":"goal-plugin","version":"1.0.0","main":"goal-plugin.server.js","exports":"./goal-plugin.server.js","dependencies":{"@opencode-ai/plugin":"^1.18.32"}}"#,
         );
         write(&src.join("package-lock.json"), "{}");
         write(
